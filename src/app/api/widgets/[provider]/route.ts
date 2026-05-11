@@ -11,7 +11,14 @@ const paramsSchema = z.object({
 
 const searchSchema = z.object({
   previewState: z
-    .enum(["loading", "empty", "error", "not_connected", "connected"])
+    .enum([
+      "loading",
+      "empty",
+      "error",
+      "not_connected",
+      "permission_required",
+      "connected",
+    ])
     .optional(),
 });
 
@@ -22,10 +29,7 @@ export async function GET(
   const supabase = await createClient();
 
   if (!supabase) {
-    return NextResponse.json(
-      { error: "Supabase is not configured." },
-      { status: 503 },
-    );
+    return NextResponse.json({ error: "Authentication is unavailable." }, { status: 503 });
   }
 
   const {

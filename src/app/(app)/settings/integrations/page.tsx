@@ -1,11 +1,16 @@
-import { PageContainer } from "@/components/layout/page-container";
 import { AppHeader } from "@/components/layout/app-header";
+import { PageContainer } from "@/components/layout/page-container";
+import { GoogleWorkspaceCard } from "@/components/integrations/google-workspace-card";
 import { IntegrationCard } from "@/components/integrations/integration-card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { createClient } from "@/lib/supabase/server";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { getIntegrationStatusRecords } from "@/features/integrations/registry";
+import { createClient } from "@/lib/supabase/server";
 
-export default async function IntegrationsPage() {
+export default async function IntegrationsPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const supabase = await createClient();
   const {
     data: { user },
@@ -14,6 +19,18 @@ export default async function IntegrationsPage() {
   const fullName = user?.user_metadata?.full_name as string | undefined;
   const displayName = fullName ?? user?.email?.split("@")[0] ?? "there";
   const records = user ? await getIntegrationStatusRecords(user.id) : [];
+  const googleRecords = records.filter((record) => record.provider !== "linear");
+  const linearRecord = records.find((record) => record.provider === "linear");
+  const params = await searchParams;
+  const messageKey = typeof params.notice === "string" ? params.notice : undefined;
+  const message =
+    messageKey === "google-updated"
+      ? "Your Google access has been updated."
+      : messageKey === "google-unavailable"
+        ? "Google access isn't available right now."
+        : messageKey === "linear-unavailable"
+          ? "Linear isn't available right now."
+          : undefined;
 
   return (
     <div className="min-h-screen">
@@ -27,44 +44,21 @@ export default async function IntegrationsPage() {
             Integrations
           </h1>
           <p className="text-muted-foreground mt-2 max-w-3xl">
-            OAuth routes are scaffolded for Gmail, Google Tasks, Google
-            Calendar, and Linear. Google uses one shared flow that will populate
-            three provider rows when live credentials are configured.
+            Choose what MyDock can bring into your workspace. You can update access whenever your routine changes.
           </p>
         </div>
 
-        <Tabs defaultValue="providers" className="space-y-6">
-          <TabsList>
-            <TabsTrigger value="providers">Providers</TabsTrigger>
-            <TabsTrigger value="notes">OAuth notes</TabsTrigger>
-          </TabsList>
-          <TabsContent value="providers" className="grid gap-6">
-            {records.map((record) => (
-              <IntegrationCard key={record.provider} record={record} />
-            ))}
-          </TabsContent>
-          <TabsContent
-            value="notes"
-            className="border-border/70 bg-card rounded-3xl border p-6 shadow-sm"
-          >
-            <div className="text-muted-foreground space-y-4 text-sm">
-              <p>
-                Gmail readonly access may still require Google verification
-                before a public launch, depending on the final scope set and app
-                publishing mode.
-              </p>
-              <p>
-                Tokens must remain server-only. The current schema prepares
-                `integration_tokens` for encrypted storage using
-                `TOKEN_ENCRYPTION_SECRET`.
-              </p>
-              <p>
-                Linear remains mock-first until the GraphQL query and token
-                exchange flow are activated behind server routes.
-              </p>
-            </div>
-          </TabsContent>
-        </Tabs>
+        {message ? (
+          <Alert>
+            <AlertTitle>Heads up</AlertTitle>
+            <AlertDescription>{message}</AlertDescription>
+          </Alert>
+        ) : null}
+
+        <div className="grid gap-6">
+          <GoogleWorkspaceCard records={googleRecords} />
+          {linearRecord ? <IntegrationCard record={linearRecord} /> : null}
+        </div>
       </PageContainer>
     </div>
   );

@@ -1,19 +1,16 @@
 import { getGoogleCalendarItems } from "@/features/integrations/providers/google/calendar.adapter";
 import { getGmailItems } from "@/features/integrations/providers/google/gmail.adapter";
-import { googleProviderScopes } from "@/features/integrations/providers/google/types";
+import { getRequiredGoogleScopes } from "@/features/integrations/providers/google/types";
 import { getGoogleTaskItems } from "@/features/integrations/providers/google/tasks.adapter";
 import { getLinearItems } from "@/features/integrations/providers/linear/adapter";
 import { linearScopes } from "@/features/integrations/providers/linear/types";
 import { buildTodaySummary } from "@/features/widgets/summary";
-import {
-  getMissingGoogleEnv,
-  getMissingLinearEnv,
-  isSupabaseConfigured,
-} from "@/lib/env";
+import { isSupabaseConfigured } from "@/lib/env";
 import { createClient } from "@/lib/supabase/server";
 
 import type {
   IntegrationStatusRecord,
+  IntegrationStatus,
   Provider,
   WidgetPayload,
   WidgetViewState,
@@ -23,61 +20,44 @@ import type {
 const providerMeta = {
   linear: {
     label: "Linear",
-    description:
-      "Assigned and high-priority issues from your Linear workspace.",
-    scopes: [...linearScopes],
-    connectPath: "/api/integrations/linear/start",
+    description: "Follow your assigned issues and the work that needs attention.",
+    requiredScopes: [...linearScopes],
+    connectPath: "/api/integrations/linear/start?next=/settings/integrations",
   },
   gmail: {
     label: "Gmail",
-    description: "Important inbox summaries using metadata/snippets only.",
-    scopes: [...googleProviderScopes.gmail],
-    connectPath: "/api/integrations/google/start",
+    description: "See the messages that matter most without leaving your dashboard.",
+    requiredScopes: getRequiredGoogleScopes("gmail"),
+    connectPath: "/api/integrations/google/start?next=/settings/integrations",
   },
   google_tasks: {
     label: "Google Tasks",
-    description: "Top pending tasks from your Google task lists.",
-    scopes: [...googleProviderScopes.google_tasks],
-    connectPath: "/api/integrations/google/start",
+    description: "Keep your top tasks in view while you work.",
+    requiredScopes: getRequiredGoogleScopes("google_tasks"),
+    connectPath: "/api/integrations/google/start?next=/settings/integrations",
   },
   google_calendar: {
     label: "Google Calendar",
-    description: "Upcoming events for today and tomorrow.",
-    scopes: [...googleProviderScopes.google_calendar],
-    connectPath: "/api/integrations/google/start",
+    description: "Track the next events shaping your day.",
+    requiredScopes: getRequiredGoogleScopes("google_calendar"),
+    connectPath: "/api/integrations/google/start?next=/settings/integrations",
   },
 } satisfies Record<
   Provider,
-  Omit<
-    IntegrationStatusRecord,
-    | "provider"
-    | "status"
-    | "providerAccountEmail"
-    | "providerAccountId"
-    | "lastSyncAt"
-    | "isAvailable"
-    | "missingEnv"
-  >
+  Pick<IntegrationStatusRecord, "label" | "description" | "requiredScopes" | "connectPath">
 >;
 
-const providerLoaders: Record<Provider, () => Promise<WidgetPayload["items"]>> =
-  {
-    linear: getLinearItems,
-    gmail: getGmailItems,
-    google_tasks: getGoogleTaskItems,
-    google_calendar: getGoogleCalendarItems,
+function buildScopeStatus(provider: Provider, grantedScopes: string[] | null | undefined) {
+  const requiredScopes = providerMeta[provider].requiredScopes;
+  const granted = requiredScopes.filter((scope) => grantedScopes?.includes(scope));
+  const missing = requiredScopes.filter((scope) => !granted.includes(scope));
+
+  return {
+    requiredScopes,
+    grantedScopes: granted,
+    missingScopes: missing,
+    needsConsent: missing.length > 0 && provider !== "linear",
   };
-
-function getMissingEnvForProvider(provider: Provider) {
-  if (provider === "linear") {
-    return getMissingLinearEnv();
-  }
-
-  return provider === "gmail" ||
-    provider === "google_tasks" ||
-    provider === "google_calendar"
-    ? getMissingGoogleEnv()
-    : [];
 }
 
 export async function getIntegrationStatusRecords(
@@ -91,7 +71,7 @@ export async function getIntegrationStatusRecords(
           await supabase
             .from("integrations")
             .select(
-              "provider,status,provider_account_email,provider_account_id,last_sync_at,scopes",
+              "account_id,provider,status,provider_account_email,provider_account_id,last_sync_at,scopes",
             )
             .eq("user_id", userId)
         ).data ?? [])
@@ -99,90 +79,174 @@ export async function getIntegrationStatusRecords(
 
   return (Object.keys(providerMeta) as Provider[]).map((provider) => {
     const match = rows.find((row) => row.provider === provider);
-    const missingEnv = getMissingEnvForProvider(provider);
+    const scopeStatus = buildScopeStatus(provider, match?.scopes);
+    const status = (match?.status as IntegrationStatus | undefined) ?? "disconnected";
 
     return {
       provider,
       ...providerMeta[provider],
-      status:
-        (match?.status as IntegrationStatusRecord["status"]) ?? "disconnected",
+      ...scopeStatus,
+      status,
       providerAccountEmail: match?.provider_account_email ?? null,
       providerAccountId: match?.provider_account_id ?? null,
       lastSyncAt: match?.last_sync_at ?? null,
-      isAvailable: missingEnv.length === 0,
-      missingEnv,
-      scopes: match?.scopes ?? providerMeta[provider].scopes,
+      accountId: match?.account_id ?? null,
     };
   });
+}
+
+function getDefaultScopeStatus(provider: Provider) {
+  return {
+    requiredScopes: [...providerMeta[provider].requiredScopes],
+    grantedScopes: [],
+    missingScopes: [...providerMeta[provider].requiredScopes],
+    needsConsent: provider !== "linear",
+  };
+}
+
+function getDerivedWidgetState(
+  provider: Provider,
+  statusRecord: IntegrationStatusRecord | undefined,
+  items: WidgetPayload["items"],
+): WidgetViewState {
+  if (!statusRecord || statusRecord.status === "disconnected") {
+    return "not_connected";
+  }
+
+  if (provider !== "linear" && statusRecord.needsConsent) {
+    return "permission_required";
+  }
+
+  if (statusRecord.status === "error") {
+    return "error";
+  }
+
+  return items.length === 0 ? "empty" : "connected";
+}
+
+function shouldSkipProviderLoad(
+  provider: Provider,
+  statusRecord: IntegrationStatusRecord | undefined,
+  previewState?: WidgetViewState,
+) {
+  if (previewState) {
+    return false;
+  }
+
+  if (!statusRecord || statusRecord.status === "disconnected") {
+    return true;
+  }
+
+  if (provider !== "linear" && statusRecord.needsConsent) {
+    return true;
+  }
+
+  return statusRecord.status === "error";
 }
 
 function buildWidgetPayload(
   provider: Provider,
   statusRecord: IntegrationStatusRecord | undefined,
   items: WidgetPayload["items"],
+  isMock: boolean,
   previewState?: WidgetViewState,
 ): WidgetPayload {
   const lastUpdatedAt = new Date().toISOString();
+  const scopeStatus = statusRecord
+    ? {
+        requiredScopes: statusRecord.requiredScopes,
+        grantedScopes: statusRecord.grantedScopes,
+        missingScopes: statusRecord.missingScopes,
+        needsConsent: statusRecord.needsConsent,
+      }
+    : getDefaultScopeStatus(provider);
 
-  if (previewState === "loading") {
+  const state = previewState ?? getDerivedWidgetState(provider, statusRecord, items);
+
+  if (state === "loading") {
     return {
       provider,
       title: providerMeta[provider].label,
-      state: "loading",
+      state,
       items: [],
-      isMock: true,
+      isMock,
       connectionStatus: statusRecord?.status ?? "disconnected",
       lastUpdatedAt,
+      accountEmail: statusRecord?.providerAccountEmail ?? null,
+      ...scopeStatus,
     };
   }
 
-  if (previewState === "error") {
+  if (state === "error") {
     return {
       provider,
       title: providerMeta[provider].label,
-      state: "error",
+      state,
       items: [],
-      isMock: true,
+      isMock,
       connectionStatus: statusRecord?.status ?? "error",
       lastUpdatedAt,
-      error: `Unable to load ${providerMeta[provider].label} data right now.`,
+      accountEmail: statusRecord?.providerAccountEmail ?? null,
+      error: `We couldn't load ${providerMeta[provider].label} right now.`,
+      ...scopeStatus,
     };
   }
 
-  if (previewState === "not_connected") {
+  if (state === "not_connected") {
     return {
       provider,
       title: providerMeta[provider].label,
-      state: "not_connected",
+      state,
       items: [],
-      isMock: true,
-      connectionStatus: "disconnected",
+      isMock,
+      connectionStatus: statusRecord?.status ?? "disconnected",
       lastUpdatedAt,
-      emptyMessage: `Connect ${providerMeta[provider].label} to replace mock data with a live feed.`,
+      accountEmail: statusRecord?.providerAccountEmail ?? null,
+      emptyMessage: `Connect ${providerMeta[provider].label} to see it here.`,
+      ...scopeStatus,
     };
   }
 
-  if (previewState === "empty") {
+  if (state === "permission_required") {
     return {
       provider,
       title: providerMeta[provider].label,
-      state: "empty",
+      state,
       items: [],
-      isMock: true,
+      isMock,
+      connectionStatus: "pending",
+      lastUpdatedAt,
+      accountEmail: statusRecord?.providerAccountEmail ?? null,
+      emptyMessage: `Grant access to show your ${providerMeta[provider].label.toLowerCase()}.`,
+      ...scopeStatus,
+    };
+  }
+
+  if (state === "empty") {
+    return {
+      provider,
+      title: providerMeta[provider].label,
+      state,
+      items: [],
+      isMock,
       connectionStatus: statusRecord?.status ?? "connected",
       lastUpdatedAt,
-      emptyMessage: `${providerMeta[provider].label} is connected, but there is nothing new to show.`,
+      accountEmail: statusRecord?.providerAccountEmail ?? null,
+      emptyMessage: `${providerMeta[provider].label} is up to date.`,
+      ...scopeStatus,
     };
   }
 
   return {
     provider,
     title: providerMeta[provider].label,
-    state: "connected",
+    state,
     items,
-    isMock: true,
+    isMock,
     connectionStatus: statusRecord?.status ?? "disconnected",
     lastUpdatedAt,
+    accountEmail: statusRecord?.providerAccountEmail ?? null,
+    ...scopeStatus,
   };
 }
 
@@ -192,12 +256,32 @@ export async function getWidgetPayload(
   previewState?: WidgetViewState,
 ): Promise<WidgetPayload> {
   const statusRecords = await getIntegrationStatusRecords(userId);
-  const statusRecord = statusRecords.find(
-    (record) => record.provider === provider,
-  );
-  const items = await providerLoaders[provider]();
+  const statusRecord = statusRecords.find((record) => record.provider === provider);
 
-  return buildWidgetPayload(provider, statusRecord, items, previewState);
+  if (shouldSkipProviderLoad(provider, statusRecord, previewState)) {
+    return buildWidgetPayload(provider, statusRecord, [], provider === "linear", previewState);
+  }
+
+  try {
+    const items =
+      provider === "linear"
+        ? await getLinearItems()
+        : provider === "gmail"
+          ? await getGmailItems(userId)
+          : provider === "google_tasks"
+            ? await getGoogleTaskItems(userId)
+            : await getGoogleCalendarItems(userId);
+
+    return buildWidgetPayload(
+      provider,
+      statusRecord,
+      items,
+      provider === "linear",
+      previewState,
+    );
+  } catch {
+    return buildWidgetPayload(provider, statusRecord, [], provider === "linear", "error");
+  }
 }
 
 export async function getWidgetsResponse(
@@ -208,21 +292,39 @@ export async function getWidgetsResponse(
   const statusRecords = await getIntegrationStatusRecords(userId);
   const widgetsEntries = await Promise.all(
     (Object.keys(providerMeta) as Provider[]).map(async (provider) => {
-      const statusRecord = statusRecords.find(
-        (record) => record.provider === provider,
-      );
-      const items = await providerLoaders[provider]();
+      const statusRecord = statusRecords.find((record) => record.provider === provider);
 
-      return [
-        provider,
-        buildWidgetPayload(provider, statusRecord, items, previewState),
-      ] as const;
+      if (shouldSkipProviderLoad(provider, statusRecord, previewState)) {
+        return [
+          provider,
+          buildWidgetPayload(provider, statusRecord, [], provider === "linear", previewState),
+        ] as const;
+      }
+
+      try {
+        const items =
+          provider === "linear"
+            ? await getLinearItems()
+            : provider === "gmail"
+              ? await getGmailItems(userId)
+              : provider === "google_tasks"
+                ? await getGoogleTaskItems(userId)
+                : await getGoogleCalendarItems(userId);
+
+        return [
+          provider,
+          buildWidgetPayload(provider, statusRecord, items, provider === "linear", previewState),
+        ] as const;
+      } catch {
+        return [
+          provider,
+          buildWidgetPayload(provider, statusRecord, [], provider === "linear", "error"),
+        ] as const;
+      }
     }),
   );
 
-  const widgets = Object.fromEntries(
-    widgetsEntries,
-  ) as WidgetsResponse["widgets"];
+  const widgets = Object.fromEntries(widgetsEntries) as WidgetsResponse["widgets"];
 
   return {
     generatedAt,

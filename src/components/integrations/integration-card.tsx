@@ -3,7 +3,6 @@ import Link from "next/link";
 
 import { IntegrationStatusBadge } from "@/components/integrations/integration-status-badge";
 import { ProviderIcon } from "@/components/widgets/provider-icon";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Card,
@@ -41,55 +40,27 @@ export function IntegrationCard({
       <CardContent className="space-y-4">
         <dl className="text-muted-foreground grid gap-3 text-sm sm:grid-cols-2">
           <div>
-            <dt className="text-foreground font-medium">Scopes</dt>
-            <dd className="mt-1 break-all">{record.scopes.join(", ")}</dd>
+            <dt className="text-foreground font-medium">Connected account</dt>
+            <dd className="mt-1">{record.providerAccountEmail ?? "Not connected"}</dd>
           </div>
           <div>
-            <dt className="text-foreground font-medium">Last sync</dt>
+            <dt className="text-foreground font-medium">Last updated</dt>
             <dd className="mt-1">
               {record.lastSyncAt
                 ? formatDistanceToNowStrict(new Date(record.lastSyncAt), {
                     addSuffix: true,
                   })
-                : "Not synced yet"}
+                : "No sync yet"}
             </dd>
-          </div>
-          <div>
-            <dt className="text-foreground font-medium">Connected account</dt>
-            <dd className="mt-1">
-              {record.providerAccountEmail ?? "Not connected"}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-foreground font-medium">Provider path</dt>
-            <dd className="mt-1">{record.connectPath}</dd>
           </div>
         </dl>
 
-        {!record.isAvailable ? (
-          <Alert>
-            <AlertTitle>Missing configuration</AlertTitle>
-            <AlertDescription>
-              Add {record.missingEnv.join(", ")} before enabling real
-              {` ${record.label} `}
-              OAuth.
-            </AlertDescription>
-          </Alert>
-        ) : null}
-
         <div className="flex flex-wrap gap-3">
-          {record.isAvailable ? (
-            <Link
-              href={record.connectPath}
-              className={buttonVariants({ variant: "default" })}
-            >
-              Connect
-            </Link>
-          ) : (
-            <Button disabled>Connect</Button>
-          )}
+          <Link href={record.connectPath} className={buttonVariants({ variant: "default" })}>
+            {record.status === "connected" ? "Reconnect" : "Connect"}
+          </Link>
           <Button variant="outline" disabled>
-            Disconnect (coming soon)
+            Disconnect
           </Button>
           <span
             className={cn(
@@ -97,7 +68,7 @@ export function IntegrationCard({
               "text-muted-foreground pointer-events-none px-0",
             )}
           >
-            Shared Google OAuth will eventually populate 3 rows.
+            Read-only for now.
           </span>
         </div>
       </CardContent>

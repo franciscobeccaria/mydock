@@ -1,14 +1,27 @@
-"use client";
-
-import { Mail, Send } from "lucide-react";
-import { useState } from "react";
-import { toast } from "sonner";
+import { ArrowRight, CalendarDays, CheckCheck, Mail } from "lucide-react";
+import Link from "next/link";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { createClient } from "@/lib/supabase/client";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
+
+const permissionHighlights = [
+  {
+    icon: <Mail className="size-4" />,
+    title: "Inbox",
+    description: "See recent messages and unread highlights.",
+  },
+  {
+    icon: <CalendarDays className="size-4" />,
+    title: "Calendar",
+    description: "Bring the next events in front of you.",
+  },
+  {
+    icon: <CheckCheck className="size-4" />,
+    title: "Tasks",
+    description: "Keep your pending tasks in view.",
+  },
+];
 
 export function LoginForm({
   isConfigured,
@@ -17,98 +30,57 @@ export function LoginForm({
   isConfigured: boolean;
   message?: string;
 }) {
-  const [email, setEmail] = useState("");
-  const [statusMessage, setStatusMessage] = useState<string | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setStatusMessage(null);
-
-    const trimmedEmail = email.trim();
-
-    if (!trimmedEmail) {
-      setStatusMessage("Enter an email address to continue.");
-      return;
-    }
-
-    const supabase = createClient();
-
-    if (!supabase) {
-      setStatusMessage("Supabase is not configured yet.");
-      return;
-    }
-
-    setIsSubmitting(true);
-
-    const { error } = await supabase.auth.signInWithOtp({
-      email: trimmedEmail,
-      options: {
-        emailRedirectTo: `${window.location.origin}/auth/callback?next=/dashboard`,
-      },
-    });
-
-    setIsSubmitting(false);
-
-    if (error) {
-      setStatusMessage(error.message);
-      return;
-    }
-
-    setEmail("");
-    setStatusMessage("Magic link sent. Check your inbox to finish signing in.");
-    toast.success("Magic link sent.");
-  }
-
   return (
     <div className="space-y-5">
       {!isConfigured ? (
         <Alert>
-          <AlertTitle>Supabase configuration required</AlertTitle>
+          <AlertTitle>Sign in is temporarily unavailable</AlertTitle>
           <AlertDescription>
-            Add your Supabase URL and publishable key in `.env.local` before
-            signing in.
+            Please try again in a few minutes.
           </AlertDescription>
         </Alert>
       ) : null}
 
       {message ? (
         <Alert>
-          <AlertTitle>Heads up</AlertTitle>
+          <AlertTitle>We couldn&apos;t finish that</AlertTitle>
           <AlertDescription>{message}</AlertDescription>
         </Alert>
       ) : null}
 
-      <form className="space-y-4" onSubmit={onSubmit}>
-        <div className="space-y-2">
-          <Label htmlFor="email">Work email</Label>
-          <div className="relative">
-            <Mail className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2" />
-            <Input
-              id="email"
-              type="email"
-              placeholder="you@company.com"
-              className="pl-9"
-              disabled={!isConfigured || isSubmitting}
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-            />
+      <div className="grid gap-3 sm:grid-cols-3">
+        {permissionHighlights.map((item) => (
+          <div
+            key={item.title}
+            className="border-border/70 bg-accent/20 rounded-2xl border p-4"
+          >
+            <div className="bg-background text-foreground mb-3 inline-flex size-8 items-center justify-center rounded-xl border">
+              {item.icon}
+            </div>
+            <p className="font-medium">{item.title}</p>
+            <p className="text-muted-foreground mt-1 text-sm">
+              {item.description}
+            </p>
           </div>
-        </div>
+        ))}
+      </div>
 
-        {statusMessage ? (
-          <p className="text-muted-foreground text-sm">{statusMessage}</p>
-        ) : null}
-
-        <Button
-          className="w-full"
-          type="submit"
-          disabled={!isConfigured || isSubmitting}
+      {isConfigured ? (
+        <Link
+          href="/api/integrations/google/start?next=/dashboard"
+          className={cn(buttonVariants({ size: "lg" }), "w-full")}
         >
-          <Send className="mr-2 size-4" />
-          {isSubmitting ? "Sending link…" : "Send magic link"}
+          Continue with Google <ArrowRight className="ml-2 size-4" />
+        </Link>
+      ) : (
+        <Button className="w-full" size="lg" disabled>
+          Continue with Google
         </Button>
-      </form>
+      )}
+
+      <p className="text-muted-foreground text-center text-sm">
+        You can review or update access later from Integrations.
+      </p>
     </div>
   );
 }

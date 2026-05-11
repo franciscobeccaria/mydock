@@ -17,9 +17,7 @@ export function LinearWidget({ payload }: { payload: WidgetPayload }) {
         <WidgetErrorState message={payload.error ?? "Linear could not load."} />
       ) : null}
       {payload.state === "empty" ? (
-        <WidgetEmptyState
-          message={payload.emptyMessage ?? "No issues need attention."}
-        />
+        <WidgetEmptyState message={payload.emptyMessage ?? "No issues need attention."} />
       ) : null}
       {payload.state === "not_connected" ? (
         <WidgetNotConnectedState providerLabel="Linear" />
@@ -28,10 +26,7 @@ export function LinearWidget({ payload }: { payload: WidgetPayload }) {
         <ScrollArea className="h-[290px] pr-4">
           <div className="space-y-3">
             {payload.items.slice(0, 5).map((item) => (
-              <div
-                key={item.id}
-                className="border-border/60 rounded-2xl border p-3"
-              >
+              <div key={item.id} className="border-border/60 rounded-2xl border p-3">
                 <div className="mb-2 flex items-center justify-between gap-3">
                   <p className="text-muted-foreground text-xs font-medium tracking-[0.18em] uppercase">
                     {item.id}
@@ -51,9 +46,7 @@ export function LinearWidget({ payload }: { payload: WidgetPayload }) {
                 <div className="text-muted-foreground mt-2 flex items-center justify-between gap-3 text-sm">
                   <span>{item.subtitle}</span>
                   <span>
-                    {item.dueAt
-                      ? format(new Date(item.dueAt), "MMM d")
-                      : "No due date"}
+                    {item.dueAt ? format(new Date(item.dueAt), "MMM d") : "No due date"}
                   </span>
                 </div>
               </div>

@@ -5,12 +5,17 @@ import { Progress } from "@/components/ui/progress";
 import type { TodaySummary } from "@/features/integrations/types";
 
 export function TodaySummaryWidget({ summary }: { summary: TodaySummary }) {
+  const readiness =
+    summary.totalSourceCount === 0
+      ? 0
+      : Math.round((summary.readySourceCount / summary.totalSourceCount) * 100);
+
   return (
     <WidgetCard provider="today" title="Today Summary" wide>
       <div className="grid gap-6 lg:grid-cols-[1.4fr_0.8fr] lg:items-center">
         <div>
           <div className="border-border/70 bg-accent/40 text-muted-foreground inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium">
-            <Sparkles className="size-3.5" /> Deterministic summary
+            <Sparkles className="size-3.5" /> Daily brief
           </div>
           <h3 className="mt-4 text-2xl font-semibold tracking-tight">
             {summary.headline}
@@ -28,18 +33,20 @@ export function TodaySummaryWidget({ summary }: { summary: TodaySummary }) {
           <p className="text-muted-foreground text-sm font-medium">
             Workspace readiness
           </p>
-          <p className="mt-2 text-4xl font-semibold">92%</p>
-          <Progress className="mt-5" value={92} />
+          <p className="mt-2 text-4xl font-semibold">{readiness}%</p>
+          <Progress className="mt-5" value={readiness} />
           <div className="mt-5 grid gap-3 sm:grid-cols-2">
             <div className="bg-background/80 rounded-2xl p-4">
               <p className="text-muted-foreground text-xs tracking-[0.18em] uppercase">
-                Signals
+                Ready
               </p>
-              <p className="mt-2 text-lg font-semibold">4 sources</p>
+              <p className="mt-2 text-lg font-semibold">
+                {summary.readySourceCount}/{summary.totalSourceCount}
+              </p>
             </div>
             <div className="bg-background/80 rounded-2xl p-4">
               <p className="text-muted-foreground text-xs tracking-[0.18em] uppercase">
-                Generated
+                Updated
               </p>
               <p className="mt-2 text-lg font-semibold">
                 {new Date(summary.generatedAt).toLocaleTimeString([], {

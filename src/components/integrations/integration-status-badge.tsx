@@ -13,7 +13,7 @@ export function IntegrationStatusBadge({
   if (status === "pending") {
     return (
       <Badge variant="outline" className="rounded-full px-2.5">
-        Pending
+        Needs access
       </Badge>
     );
   }
@@ -21,14 +21,14 @@ export function IntegrationStatusBadge({
   if (status === "error") {
     return (
       <Badge variant="destructive" className="rounded-full px-2.5">
-        Error
+        Issue
       </Badge>
     );
   }
 
   return (
     <Badge variant="secondary" className="rounded-full px-2.5">
-      Disconnected
+      Not connected
     </Badge>
   );
 }

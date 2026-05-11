@@ -1,18 +1,18 @@
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 
 import { getLinearAuthorizationUrl } from "@/features/integrations/providers/linear/oauth";
 
-export async function GET() {
+function getSafeNext(request: NextRequest) {
+  const next = request.nextUrl.searchParams.get("next") ?? "/settings/integrations";
+  return next.startsWith("/") ? next : "/settings/integrations";
+}
+
+export async function GET(request: NextRequest) {
   const result = getLinearAuthorizationUrl("linear-oauth");
 
   if (!result.ok) {
-    return NextResponse.json(
-      {
-        error: result.message,
-        missingEnv: result.missingEnv,
-        provider: "linear",
-      },
-      { status: 400 },
+    return NextResponse.redirect(
+      new URL(`${getSafeNext(request)}?notice=linear-unavailable`, request.url),
     );
   }
 

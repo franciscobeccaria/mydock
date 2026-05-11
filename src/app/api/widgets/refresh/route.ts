@@ -28,9 +28,16 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const rawBody = request.headers.get("content-length")
-    ? await request.json()
-    : undefined;
+  let rawBody: unknown;
+
+  if (request.headers.get("content-length")) {
+    try {
+      rawBody = await request.json();
+    } catch {
+      rawBody = undefined;
+    }
+  }
+
   const parsedBody = bodySchema.safeParse(rawBody);
 
   if (!parsedBody.success) {

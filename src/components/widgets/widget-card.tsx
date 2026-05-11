@@ -5,28 +5,46 @@ import Link from "next/link";
 import { ProviderIcon } from "@/components/widgets/provider-icon";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import type { Provider, WidgetPayload } from "@/features/integrations/types";
 
-const statusVariantMap = {
-  disconnected: "secondary",
-  pending: "outline",
-  connected: "default",
-  error: "destructive",
-} as const;
+function getStatusBadge(payload: WidgetPayload) {
+  if (payload.state === "permission_required") {
+    return {
+      label: "Needs access",
+      variant: "outline" as const,
+    };
+  }
+
+  if (payload.state === "error" || payload.connectionStatus === "error") {
+    return {
+      label: "Issue",
+      variant: "destructive" as const,
+    };
+  }
+
+  if (payload.connectionStatus === "connected") {
+    return {
+      label: "Connected",
+      variant: "default" as const,
+    };
+  }
+
+  if (payload.connectionStatus === "pending") {
+    return {
+      label: "Needs attention",
+      variant: "outline" as const,
+    };
+  }
+
+  return {
+    label: "Not connected",
+    variant: "secondary" as const,
+  };
+}
 
 export function WidgetCard({
   provider,
@@ -43,6 +61,8 @@ export function WidgetCard({
   href?: string;
   wide?: boolean;
 }) {
+  const badge = payload ? getStatusBadge(payload) : null;
+
   return (
     <Card
       className={
@@ -63,22 +83,17 @@ export function WidgetCard({
               </CardTitle>
               {payload ? (
                 <div className="text-muted-foreground mt-1 flex flex-wrap items-center gap-2 text-xs">
-                  <Badge
-                    variant={statusVariantMap[payload.connectionStatus]}
-                    className="rounded-full px-2.5"
-                  >
-                    {payload.isMock ? "Mock data" : payload.connectionStatus}
-                  </Badge>
+                  {badge ? (
+                    <Badge variant={badge.variant} className="rounded-full px-2.5">
+                      {badge.label}
+                    </Badge>
+                  ) : null}
                   <Tooltip>
                     <TooltipTrigger className="inline-flex items-center gap-1">
                       <Clock3 className="size-3.5" />
-                      Updated{" "}
-                      {formatDistanceToNowStrict(
-                        new Date(payload.lastUpdatedAt),
-                        {
-                          addSuffix: true,
-                        },
-                      )}
+                      Updated {formatDistanceToNowStrict(new Date(payload.lastUpdatedAt), {
+                        addSuffix: true,
+                      })}
                     </TooltipTrigger>
                     <TooltipContent>
                       {new Date(payload.lastUpdatedAt).toLocaleString()}
@@ -113,10 +128,6 @@ export function WidgetCard({
         <Separator />
       </CardHeader>
       <CardContent>{children}</CardContent>
-      <CardFooter className="text-muted-foreground pt-1 text-xs">
-        Built for a read-first MVP with real adapters scaffolded behind server
-        routes.
-      </CardFooter>
     </Card>
   );
 }

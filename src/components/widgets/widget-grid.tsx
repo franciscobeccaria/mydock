@@ -7,10 +7,7 @@ import { GoogleCalendarWidget } from "@/components/widgets/google-calendar-widge
 import { GoogleTasksWidget } from "@/components/widgets/google-tasks-widget";
 import { LinearWidget } from "@/components/widgets/linear-widget";
 import { TodaySummaryWidget } from "@/components/widgets/today-summary-widget";
-import type {
-  WidgetPayload,
-  WidgetsResponse,
-} from "@/features/integrations/types";
+import type { WidgetPayload, WidgetsResponse } from "@/features/integrations/types";
 
 function makeLoadingPayload(
   provider: WidgetPayload["provider"],
@@ -24,6 +21,11 @@ function makeLoadingPayload(
     isMock: true,
     connectionStatus: "disconnected",
     lastUpdatedAt: new Date().toISOString(),
+    requiredScopes: [],
+    grantedScopes: [],
+    missingScopes: [],
+    needsConsent: false,
+    accountEmail: null,
   };
 }
 
@@ -51,24 +53,19 @@ export function WidgetGrid() {
             generatedAt: new Date().toISOString(),
             headline: "Loading your workday…",
             bullets: [
-              "Preparing widget snapshots.",
-              "Checking provider states.",
-              "Assembling your dashboard overview.",
+              "Preparing your workspace.",
+              "Checking what's ready.",
+              "Pulling together your daily brief.",
             ],
+            readySourceCount: 0,
+            totalSourceCount: 4,
           }
         }
       />
-      <LinearWidget
-        payload={data?.widgets.linear ?? makeLoadingPayload("linear", "Linear")}
-      />
-      <GmailWidget
-        payload={data?.widgets.gmail ?? makeLoadingPayload("gmail", "Gmail")}
-      />
+      <LinearWidget payload={data?.widgets.linear ?? makeLoadingPayload("linear", "Linear")} />
+      <GmailWidget payload={data?.widgets.gmail ?? makeLoadingPayload("gmail", "Gmail")} />
       <GoogleTasksWidget
-        payload={
-          data?.widgets.google_tasks ??
-          makeLoadingPayload("google_tasks", "Tasks")
-        }
+        payload={data?.widgets.google_tasks ?? makeLoadingPayload("google_tasks", "Tasks")}
       />
       <GoogleCalendarWidget
         payload={

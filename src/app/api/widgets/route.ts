@@ -6,7 +6,14 @@ import { createClient } from "@/lib/supabase/server";
 
 const searchSchema = z.object({
   previewState: z
-    .enum(["loading", "empty", "error", "not_connected", "connected"])
+    .enum([
+      "loading",
+      "empty",
+      "error",
+      "not_connected",
+      "permission_required",
+      "connected",
+    ])
     .optional(),
 });
 
@@ -14,10 +21,7 @@ export async function GET(request: NextRequest) {
   const supabase = await createClient();
 
   if (!supabase) {
-    return NextResponse.json(
-      { error: "Supabase is not configured." },
-      { status: 503 },
-    );
+    return NextResponse.json({ error: "Authentication is unavailable." }, { status: 503 });
   }
 
   const {
@@ -33,10 +37,7 @@ export async function GET(request: NextRequest) {
   });
 
   if (!parsed.success) {
-    return NextResponse.json(
-      { error: "Invalid previewState parameter." },
-      { status: 400 },
-    );
+    return NextResponse.json({ error: "Invalid previewState parameter." }, { status: 400 });
   }
 
   const response = await getWidgetsResponse(user.id, parsed.data.previewState);

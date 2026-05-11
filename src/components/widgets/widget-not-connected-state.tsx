@@ -12,8 +12,7 @@ export function WidgetNotConnectedState({
     <div className="border-border/70 flex flex-col items-center justify-center rounded-2xl border border-dashed px-6 py-10 text-center">
       <PlugZap className="text-muted-foreground mb-3 size-8" />
       <p className="text-muted-foreground mb-4 max-w-sm text-sm">
-        Connect {providerLabel} in integrations to replace mock previews with
-        live data.
+        Connect {providerLabel} to see its latest updates here.
       </p>
       <Link
         href="/settings/integrations"

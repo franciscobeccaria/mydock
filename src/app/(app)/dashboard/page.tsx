@@ -1,5 +1,5 @@
-import { PageContainer } from "@/components/layout/page-container";
 import { AppHeader } from "@/components/layout/app-header";
+import { PageContainer } from "@/components/layout/page-container";
 import { WidgetGrid } from "@/components/widgets/widget-grid";
 import { createClient } from "@/lib/supabase/server";
 
@@ -17,16 +17,11 @@ export default async function DashboardPage() {
       <AppHeader name={displayName} email={user?.email} />
       <PageContainer className="space-y-8 py-8">
         <section className="space-y-3">
-          <p className="text-muted-foreground text-xl">
-            Good morning, {displayName} 👋
-          </p>
+          <p className="text-muted-foreground text-xl">Good morning, {displayName} 👋</p>
           <div>
-            <h1 className="text-4xl font-semibold tracking-tight">
-              Here&apos;s your workspace
-            </h1>
+            <h1 className="text-4xl font-semibold tracking-tight">Here&apos;s your workspace</h1>
             <p className="text-muted-foreground mt-2">
-              Scan your priorities, inbox, tasks, and calendar in one
-              desktop-first surface.
+              Scan the signals that matter, then move into your day with less tab switching.
             </p>
           </div>
         </section>

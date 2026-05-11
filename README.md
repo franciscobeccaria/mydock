@@ -1,15 +1,17 @@
 # MyDock
 
-MyDock is a desktop-first productivity dashboard that brings Linear, Gmail, Google Tasks, and Google Calendar into one clean workspace.
+MyDock is a desktop-first productivity dashboard that brings Gmail, Google Calendar, Google Tasks, and Linear into one calm workspace.
 
-## MVP scope
+## Current product state
 
-- Next.js App Router single app
-- shadcn/ui dashboard
-- Supabase cloud auth with magic links
-- mock-first widgets for provider data
-- Google + Linear OAuth/server adapters scaffolded for later
-- Supabase migrations + RLS included
+- Google-first sign-in with Supabase Auth
+- Real Google integrations for:
+  - Gmail
+  - Google Calendar
+  - Google Tasks
+- Linear integration scaffolded, but not yet live
+- Desktop-first dashboard built with shadcn/ui
+- Supabase schema, auth, and RLS already set up
 
 ## Tech stack
 
@@ -33,65 +35,76 @@ cp .env.example .env.local
 pnpm dev
 ```
 
-Open `http://localhost:3000/login`.
+Open:
 
-## Run without provider credentials
+```txt
+http://localhost:3000/login
+```
 
-The app still works before Google or Linear OAuth is configured:
+## Required env vars
 
-- authentication uses Supabase only
-- widgets render mock data
-- integration callbacks fail gracefully with clear missing-env responses
+### App + Supabase
 
-## Connect Supabase
+```bash
+NEXT_PUBLIC_APP_URL=http://localhost:3000
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
+SUPABASE_SERVICE_ROLE_KEY=
+TOKEN_ENCRYPTION_SECRET=
+```
 
-1. Create or reuse a Supabase project.
-2. Add `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` to `.env.local`.
-3. Make sure Auth URL Configuration allows `http://localhost:3000/**`.
+### Google
 
-See `docs/supabase-setup.md`.
+```bash
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+GOOGLE_REDIRECT_URI=http://localhost:3000/api/integrations/google/callback
+```
 
-## Migrations
+### Linear
 
-Local CLI flow:
+```bash
+LINEAR_CLIENT_ID=
+LINEAR_CLIENT_SECRET=
+LINEAR_REDIRECT_URI=http://localhost:3000/api/integrations/linear/callback
+```
+
+## Auth and integrations
+
+### Google
+
+Google sign-in is the primary login flow.
+
+The app currently uses Google OAuth to:
+- sign users in
+- request Gmail, Calendar, and Tasks permissions
+- store Google account tokens server-side
+- fetch real widget data from Google APIs
+
+### Linear
+
+Linear is still a separate integration.
+
+The UI and provider scaffolding exist, but the live OAuth exchange and real data fetching are not finished yet.
+
+## Database and migrations
+
+Migrations live in:
+
+```txt
+supabase/migrations
+```
+
+Useful scripts:
 
 ```bash
 pnpm supabase:start
+pnpm supabase:stop
 pnpm supabase:reset
 pnpm supabase:types
 ```
 
-Migrations live in `supabase/migrations`.
-
-## Google OAuth later
-
-Fill:
-
-- `GOOGLE_CLIENT_ID`
-- `GOOGLE_CLIENT_SECRET`
-- `GOOGLE_REDIRECT_URI`
-
-Then complete the server-side code exchange in `src/app/api/integrations/google/callback/route.ts`.
-
-## Linear OAuth later
-
-Fill:
-
-- `LINEAR_CLIENT_ID`
-- `LINEAR_CLIENT_SECRET`
-- `LINEAR_REDIRECT_URI`
-
-Then complete the exchange in `src/app/api/integrations/linear/callback/route.ts`.
-
-## Deploy to Vercel
-
-- set public Supabase env vars
-- set `NEXT_PUBLIC_APP_URL`
-- allow Vercel preview URLs in Supabase redirects
-
-See `docs/vercel-deploy.md`.
-
-## Scripts
+## Main scripts
 
 ```bash
 pnpm dev
@@ -100,15 +113,36 @@ pnpm start
 pnpm lint
 pnpm typecheck
 pnpm format
-pnpm supabase:start
-pnpm supabase:stop
-pnpm supabase:reset
-pnpm supabase:types
 ```
 
-## Known limitations / next steps
+## Project structure highlights
 
-- provider OAuth callbacks are scaffolded, not completed
-- mock widgets are the default data source
-- token encryption is documented but not yet activated
-- widget cache is modeled in SQL but not yet used as the runtime source of truth
+- `src/app/(auth)/login/page.tsx` — Google-first login screen
+- `src/app/auth/callback/route.ts` — Supabase OAuth callback handling
+- `src/features/integrations/providers/google/account.ts` — Google account/token sync
+- `src/features/integrations/providers/google/client.ts` — server-side Google API client + token refresh
+- `src/features/integrations/providers/google/*.adapter.ts` — Gmail / Tasks / Calendar adapters
+- `src/features/integrations/providers/linear/*` — Linear scaffolding
+- `src/components/widgets/*` — dashboard widgets
+- `src/components/integrations/*` — integrations settings UI
+
+## Deploy to Vercel
+
+- set all required Supabase env vars
+- set Google env vars
+- set `NEXT_PUBLIC_APP_URL`
+- configure Supabase redirect URLs for your deployed domain
+- configure Google OAuth authorized origins and redirect URLs
+
+See `docs/vercel-deploy.md`.
+
+## Next steps
+
+- Connect and test the live Linear integration
+- Replace Linear mock data with real GraphQL data
+- Iterate and improve the dashboard UI/UX
+- Refine widget density, hierarchy, spacing, and states
+- Improve integrations settings UX and connection feedback
+- Add disconnect/reconnect management flows
+- Add caching/sync strategy for external providers
+- Prepare production hardening for Google scope verification

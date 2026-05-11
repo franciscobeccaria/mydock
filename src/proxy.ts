@@ -1,11 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
-import {
-  env,
-  getSupabasePublishableKey,
-  isSupabaseConfigured,
-} from "@/lib/env";
+import { env, getSupabasePublishableKey, isSupabaseConfigured } from "@/lib/env";
 import type { Database } from "@/types/supabase";
 
 export async function proxy(request: NextRequest) {
@@ -16,9 +12,7 @@ export async function proxy(request: NextRequest) {
   }
 
   if (!isSupabaseConfigured) {
-    return NextResponse.redirect(
-      new URL("/login?reason=missing-supabase", request.url),
-    );
+    return NextResponse.redirect(new URL("/login?reason=auth-unavailable", request.url));
   }
 
   const response = NextResponse.next();

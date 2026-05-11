@@ -6,12 +6,14 @@ export const providers = [
 ] as const;
 
 export type Provider = (typeof providers)[number];
+export type GoogleCapabilityProvider = Exclude<Provider, "linear">;
 
 export type WidgetViewState =
   | "loading"
   | "empty"
   | "error"
   | "not_connected"
+  | "permission_required"
   | "connected";
 
 export type IntegrationStatus =
@@ -36,7 +38,14 @@ export type WidgetItem = {
   metadata?: Record<string, unknown>;
 };
 
-export type WidgetPayload = {
+export type ScopeStatus = {
+  requiredScopes: string[];
+  grantedScopes: string[];
+  missingScopes: string[];
+  needsConsent: boolean;
+};
+
+export type WidgetPayload = ScopeStatus & {
   provider: Provider;
   title: string;
   state: WidgetViewState;
@@ -44,6 +53,7 @@ export type WidgetPayload = {
   isMock: boolean;
   connectionStatus: IntegrationStatus;
   lastUpdatedAt: string;
+  accountEmail?: string | null;
   error?: string;
   emptyMessage?: string;
 };
@@ -52,20 +62,20 @@ export type TodaySummary = {
   generatedAt: string;
   headline: string;
   bullets: string[];
+  readySourceCount: number;
+  totalSourceCount: number;
 };
 
-export type IntegrationStatusRecord = {
+export type IntegrationStatusRecord = ScopeStatus & {
   provider: Provider;
   label: string;
   description: string;
   status: IntegrationStatus;
-  scopes: string[];
   providerAccountEmail: string | null;
   providerAccountId: string | null;
   lastSyncAt: string | null;
   connectPath: string;
-  isAvailable: boolean;
-  missingEnv: string[];
+  accountId: string | null;
 };
 
 export type WidgetsResponse = {

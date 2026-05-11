@@ -1,75 +1,82 @@
-import {
-  ArrowRight,
-  LayoutDashboard,
-  ShieldCheck,
-  Sparkles,
-} from "lucide-react";
+import { redirect } from "next/navigation";
+import { CalendarRange, Mail, PanelsTopLeft, Sparkles } from "lucide-react";
 
 import { LoginForm } from "@/components/auth/login-form";
 import { PageContainer } from "@/components/layout/page-container";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-import { getMissingSupabaseEnv, isSupabaseConfigured } from "@/lib/env";
+import { isSupabaseConfigured } from "@/lib/env";
+import { createClient } from "@/lib/supabase/server";
+
+const featureList = [
+  {
+    icon: <PanelsTopLeft className="size-5" />,
+    title: "One calm workspace",
+    description: "Keep your most important updates in a single desktop view.",
+  },
+  {
+    icon: <Mail className="size-5" />,
+    title: "Inbox + tasks together",
+    description: "See messages, tasks, and your next events without tab hopping.",
+  },
+  {
+    icon: <CalendarRange className="size-5" />,
+    title: "Built for your day",
+    description: "Start with the highlights that matter right now.",
+  },
+];
 
 export default async function LoginPage({
   searchParams,
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  const supabase = await createClient();
+
+  if (supabase) {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (user) {
+      redirect("/dashboard");
+    }
+  }
+
   const params = await searchParams;
   const reason = typeof params.reason === "string" ? params.reason : undefined;
   const message =
-    reason === "missing-supabase"
-      ? `Missing ${getMissingSupabaseEnv().join(", ")}. Add them to continue.`
-      : reason === "auth-callback-failed"
-        ? "The auth callback could not complete. Try another magic link or review your Supabase redirect settings."
+    reason === "auth-failed"
+      ? "We couldn't finish signing you in. Please try again."
+      : reason === "auth-unavailable"
+        ? "Google sign in isn't available right now."
         : undefined;
 
   return (
     <PageContainer className="flex min-h-screen items-center py-12">
       <div className="grid w-full gap-8 lg:grid-cols-[1.1fr_0.9fr] lg:items-center">
         <div className="space-y-6">
-          <Badge
-            variant="outline"
-            className="rounded-full px-3 py-1 text-xs font-medium"
-          >
-            Desktop-first • Read-first • Supabase auth
+          <Badge variant="outline" className="rounded-full px-3 py-1 text-xs font-medium">
+            Google-first workspace
           </Badge>
           <div className="space-y-4">
             <h1 className="max-w-xl text-4xl font-semibold tracking-tight text-balance sm:text-5xl">
-              The productivity dashboard that feels like a calm desktop.
+              Bring your inbox, calendar, tasks, and focus into one place.
             </h1>
             <p className="text-muted-foreground max-w-2xl text-lg">
-              Connect Linear, Gmail, Google Tasks, and Google Calendar into one
-              clean workspace with mock-first widgets and real production
-              scaffolding.
+              MyDock turns the tools you already use into a calm daily workspace built for a big screen.
             </p>
           </div>
           <div className="grid gap-4 sm:grid-cols-3">
-            <FeatureCard
-              icon={<LayoutDashboard className="size-5" />}
-              title="Focused layout"
-              description="One dashboard, no sidebar, polished cards."
-            />
-            <FeatureCard
-              icon={<ShieldCheck className="size-5" />}
-              title="Server-first auth"
-              description="Supabase SSR with protected app routes."
-            />
-            <FeatureCard
-              icon={<Sparkles className="size-5" />}
-              title="Mock-ready data"
-              description="Works before Google or Linear creds exist."
-            />
+            {featureList.map((feature) => (
+              <div key={feature.title} className="border-border/70 bg-card/80 rounded-3xl border p-5 shadow-sm">
+                <div className="bg-accent text-foreground mb-3 inline-flex size-10 items-center justify-center rounded-2xl">
+                  {feature.icon}
+                </div>
+                <h3 className="font-medium">{feature.title}</h3>
+                <p className="text-muted-foreground mt-2 text-sm">{feature.description}</p>
+              </div>
+            ))}
           </div>
         </div>
 
@@ -80,94 +87,28 @@ export default async function LoginPage({
                 Sign in to MyDock
               </p>
               <h2 className="mt-2 text-2xl font-semibold tracking-tight">
-                Continue with a magic link
+                Continue with your Google account
               </h2>
               <p className="text-muted-foreground mt-2 text-sm">
-                A Supabase project is required for authentication. Provider
-                widgets will still use mock data until their own OAuth
-                credentials are added.
+                Sign in once and choose the Google tools you want to bring into your workspace.
               </p>
             </div>
 
             <LoginForm isConfigured={isSupabaseConfigured} message={message} />
 
-            <div className="bg-accent/40 text-muted-foreground flex items-center justify-between rounded-2xl p-4 text-sm">
-              <div>
-                <p className="text-foreground font-medium">Need setup help?</p>
-                <p className="mt-1">
-                  Open the quick setup checklist for local and remote config.
-                </p>
+            <div className="bg-accent/30 rounded-2xl p-4 text-sm">
+              <div className="text-foreground flex items-center gap-2 font-medium">
+                <Sparkles className="size-4" /> What you&apos;ll see first
               </div>
-              <Dialog>
-                <DialogTrigger render={<Button variant="outline" />}>
-                  Open checklist
-                </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>Setup checklist</DialogTitle>
-                    <DialogDescription>
-                      Use the generated `.env.example`, Supabase docs, and
-                      migrations in this repo.
-                    </DialogDescription>
-                  </DialogHeader>
-                  <ol className="text-muted-foreground space-y-3 text-sm">
-                    <li>1. Copy `.env.example` to `.env.local`.</li>
-                    <li>
-                      2. Add `NEXT_PUBLIC_SUPABASE_URL` and
-                      `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`.
-                    </li>
-                    <li>
-                      3. Keep provider OAuth vars empty until you are ready to
-                      enable Google or Linear.
-                    </li>
-                    <li>
-                      4. Run `pnpm dev` and sign in with a Supabase magic link.
-                    </li>
-                  </ol>
-                </DialogContent>
-              </Dialog>
-            </div>
-
-            <div className="bg-accent/40 text-muted-foreground rounded-2xl p-4 text-sm">
-              <p className="text-foreground font-medium">What happens next?</p>
-              <ol className="mt-3 space-y-2">
-                <li className="flex gap-2">
-                  <ArrowRight className="mt-0.5 size-4 shrink-0" /> Receive a
-                  magic link from Supabase Auth.
-                </li>
-                <li className="flex gap-2">
-                  <ArrowRight className="mt-0.5 size-4 shrink-0" /> Land on
-                  `/auth/callback` to exchange the PKCE code for a session.
-                </li>
-                <li className="flex gap-2">
-                  <ArrowRight className="mt-0.5 size-4 shrink-0" /> Open the
-                  dashboard with mock widgets and real integration scaffolding.
-                </li>
-              </ol>
+              <ul className="text-muted-foreground mt-3 space-y-2">
+                <li>Your top inbox signals</li>
+                <li>Upcoming events and tasks</li>
+                <li>A clean dashboard you can scan in seconds</li>
+              </ul>
             </div>
           </CardContent>
         </Card>
       </div>
     </PageContainer>
-  );
-}
-
-function FeatureCard({
-  icon,
-  title,
-  description,
-}: {
-  icon: React.ReactNode;
-  title: string;
-  description: string;
-}) {
-  return (
-    <div className="border-border/70 bg-card/80 rounded-3xl border p-5 shadow-sm">
-      <div className="bg-accent text-foreground mb-3 inline-flex size-10 items-center justify-center rounded-2xl">
-        {icon}
-      </div>
-      <h3 className="font-medium">{title}</h3>
-      <p className="text-muted-foreground mt-2 text-sm">{description}</p>
-    </div>
   );
 }
