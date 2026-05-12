@@ -4,7 +4,7 @@ import { getIntegrationStatusRecords } from "@/features/integrations/registry";
 import { createClient } from "@/lib/supabase/server";
 
 export async function GET() {
-  const supabase = await createClient();
+  const supabase = await createClient({ writeCookies: true });
 
   if (!supabase) {
     return NextResponse.json(

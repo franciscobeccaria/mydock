@@ -34,7 +34,7 @@
 }
 
 :root {
-  --background: oklch(0.988 0.005 95.1);
+  --background: oklch(0.986 0 0);
   --foreground: oklch(0.21 0.02 262);
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.21 0.02 262);
@@ -66,17 +66,7 @@
 
   body {
     @apply bg-background text-foreground min-h-screen;
-    background-image:
-      radial-gradient(
-        circle at top,
-        color-mix(in oklab, white 86%, #8b5cf6 14%),
-        transparent 42%
-      ),
-      linear-gradient(
-        180deg,
-        rgba(255, 255, 255, 0.9),
-        rgba(248, 248, 252, 0.96)
-      );
+    background: #fafafa;
   }
 
   ::selection {

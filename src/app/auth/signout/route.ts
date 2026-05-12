@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
 export async function POST(request: NextRequest) {
-  const supabase = await createClient();
+  const supabase = await createClient({ writeCookies: true });
 
   if (supabase) {
     await supabase.auth.signOut();

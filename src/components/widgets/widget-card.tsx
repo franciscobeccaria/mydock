@@ -1,133 +1,67 @@
-import { formatDistanceToNowStrict } from "date-fns";
-import { ArrowUpRight, Clock3 } from "lucide-react";
 import Link from "next/link";
 
 import { ProviderIcon } from "@/components/widgets/provider-icon";
-import { Badge } from "@/components/ui/badge";
-import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import type { Provider, WidgetPayload } from "@/features/integrations/types";
-
-function getStatusBadge(payload: WidgetPayload) {
-  if (payload.state === "permission_required") {
-    return {
-      label: "Needs access",
-      variant: "outline" as const,
-    };
-  }
-
-  if (payload.state === "error" || payload.connectionStatus === "error") {
-    return {
-      label: "Issue",
-      variant: "destructive" as const,
-    };
-  }
-
-  if (payload.connectionStatus === "connected") {
-    return {
-      label: "Connected",
-      variant: "default" as const,
-    };
-  }
-
-  if (payload.connectionStatus === "pending") {
-    return {
-      label: "Needs attention",
-      variant: "outline" as const,
-    };
-  }
-
-  return {
-    label: "Not connected",
-    variant: "secondary" as const,
-  };
-}
+import type { Provider } from "@/features/integrations/types";
 
 export function WidgetCard({
   provider,
   title,
-  payload,
+  headerControl,
+  footerAction,
   children,
-  href,
-  wide = false,
+  className,
 }: {
-  provider: Provider | "today";
+  provider: Provider;
   title: string;
-  payload?: WidgetPayload;
+  headerControl?: React.ReactNode;
+  footerAction?: {
+    label: string;
+    href: string;
+  };
   children: React.ReactNode;
-  href?: string;
-  wide?: boolean;
+  className?: string;
 }) {
-  const badge = payload ? getStatusBadge(payload) : null;
-
   return (
     <Card
-      className={
-        wide
-          ? "border-border/70 col-span-full shadow-sm lg:col-span-2"
-          : "border-border/70 shadow-sm"
-      }
+      className={cn(
+        "border border-[#E7E7EA] bg-white py-0 shadow-[0_12px_32px_rgba(17,24,39,0.05)] rounded-[28px]",
+        className,
+      )}
     >
-      <CardHeader className="space-y-4 pb-4">
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <div className="bg-accent text-foreground flex size-11 items-center justify-center rounded-2xl">
+      <CardHeader className="px-7 pt-7 pb-0">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="flex size-11 items-center justify-center rounded-2xl bg-[#F4F4F5] text-[#18181B]">
               <ProviderIcon provider={provider} />
             </div>
-            <div>
-              <CardTitle className="text-lg font-semibold tracking-tight">
-                {title}
-              </CardTitle>
-              {payload ? (
-                <div className="text-muted-foreground mt-1 flex flex-wrap items-center gap-2 text-xs">
-                  {badge ? (
-                    <Badge variant={badge.variant} className="rounded-full px-2.5">
-                      {badge.label}
-                    </Badge>
-                  ) : null}
-                  <Tooltip>
-                    <TooltipTrigger className="inline-flex items-center gap-1">
-                      <Clock3 className="size-3.5" />
-                      Updated {formatDistanceToNowStrict(new Date(payload.lastUpdatedAt), {
-                        addSuffix: true,
-                      })}
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      {new Date(payload.lastUpdatedAt).toLocaleString()}
-                    </TooltipContent>
-                  </Tooltip>
-                </div>
-              ) : null}
-            </div>
+            <CardTitle className="text-[1.05rem] font-semibold tracking-tight text-[#18181B]">
+              {title}
+            </CardTitle>
           </div>
-
-          {href ? (
-            <Link
-              href={href}
-              className={cn(
-                buttonVariants({ variant: "ghost", size: "sm" }),
-                "text-muted-foreground rounded-full",
-              )}
-            >
-              View all <ArrowUpRight className="ml-1 size-4" />
-            </Link>
-          ) : (
-            <span
-              className={cn(
-                buttonVariants({ variant: "ghost", size: "sm" }),
-                "text-muted-foreground rounded-full opacity-50",
-              )}
-            >
-              View all <ArrowUpRight className="ml-1 size-4" />
-            </span>
-          )}
+          {headerControl ? <div className="shrink-0">{headerControl}</div> : null}
         </div>
-        <Separator />
       </CardHeader>
-      <CardContent>{children}</CardContent>
+
+      <CardContent className="px-7 pt-6 pb-7">
+        <div className="min-h-[300px]">{children}</div>
+
+        {footerAction ? (
+          <>
+            <Separator className="my-6 h-px w-full bg-[#ECECEF]" />
+            <Link
+              href={footerAction.href}
+              target="_blank"
+              rel="noreferrer"
+              className="text-sm font-medium text-[#2563EB] transition-colors hover:text-[#1D4ED8]"
+            >
+              {footerAction.label}
+            </Link>
+          </>
+        ) : null}
+      </CardContent>
     </Card>
   );
 }

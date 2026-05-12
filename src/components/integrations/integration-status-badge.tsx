@@ -7,12 +7,19 @@ export function IntegrationStatusBadge({
   status: IntegrationStatusRecord["status"];
 }) {
   if (status === "connected") {
-    return <Badge className="rounded-full px-2.5">Connected</Badge>;
+    return (
+      <Badge
+        variant="secondary"
+        className="rounded-full bg-[#F4F4F5] px-2.5 text-[#52525B]"
+      >
+        Connected
+      </Badge>
+    );
   }
 
   if (status === "pending") {
     return (
-      <Badge variant="outline" className="rounded-full px-2.5">
+      <Badge variant="outline" className="rounded-full px-2.5 text-[#52525B]">
         Needs access
       </Badge>
     );
@@ -27,7 +34,10 @@ export function IntegrationStatusBadge({
   }
 
   return (
-    <Badge variant="secondary" className="rounded-full px-2.5">
+    <Badge
+      variant="secondary"
+      className="rounded-full bg-[#F4F4F5] px-2.5 text-[#52525B]"
+    >
       Not connected
     </Badge>
   );

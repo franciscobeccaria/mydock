@@ -27,7 +27,7 @@ function isGoogleSessionProvider(
 
 export async function GET(request: NextRequest) {
   const redirectUrl = new URL(getSafeNext(request), request.url);
-  const supabase = await createClient();
+  const supabase = await createClient({ writeCookies: true });
 
   if (!supabase) {
     return NextResponse.redirect(new URL("/login?reason=auth-unavailable", request.url));

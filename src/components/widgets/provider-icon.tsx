@@ -1,20 +1,26 @@
-import { CalendarDays, CheckSquare, Mail, Orbit } from "lucide-react";
+import {
+  SiGmail,
+  SiGooglecalendar,
+  SiGoogletasks,
+  SiLinear,
+} from "@icons-pack/react-simple-icons";
+import { LayoutGrid } from "lucide-react";
 
 import type { Provider } from "@/features/integrations/types";
 
-export function ProviderIcon({ provider }: { provider: Provider | "today" }) {
-  const className = "size-5";
+const brandClassName = "size-5";
 
+export function ProviderIcon({ provider }: { provider: Provider | "today" }) {
   switch (provider) {
     case "linear":
-      return <Orbit className={className} />;
+      return <SiLinear className={brandClassName} color="#5E6AD2" />;
     case "gmail":
-      return <Mail className={className} />;
+      return <SiGmail className={brandClassName} />;
     case "google_tasks":
-      return <CheckSquare className={className} />;
+      return <SiGoogletasks className={brandClassName} color="#188038" />;
     case "google_calendar":
-      return <CalendarDays className={className} />;
+      return <SiGooglecalendar className={brandClassName} color="#4285F4" />;
     default:
-      return <CalendarDays className={className} />;
+      return <LayoutGrid className={brandClassName} />;
   }
 }

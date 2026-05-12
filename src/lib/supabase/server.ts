@@ -8,7 +8,11 @@ import {
 } from "@/lib/env";
 import type { Database } from "@/types/supabase";
 
-export async function createClient() {
+export async function createClient({
+  writeCookies = false,
+}: {
+  writeCookies?: boolean;
+} = {}) {
   if (!isSupabaseConfigured) {
     return null;
   }
@@ -23,11 +27,19 @@ export async function createClient() {
         getAll() {
           return cookieStore.getAll();
         },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) => {
-            cookieStore.set(name, value, options);
-          });
-        },
+        ...(writeCookies
+          ? {
+              setAll(cookiesToSet: {
+                name: string;
+                value: string;
+                options: Parameters<typeof cookieStore.set>[2];
+              }[]) {
+                cookiesToSet.forEach(({ name, value, options }) => {
+                  cookieStore.set(name, value, options);
+                });
+              },
+            }
+          : {}),
       },
     },
   );

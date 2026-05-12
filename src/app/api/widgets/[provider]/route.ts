@@ -26,7 +26,7 @@ export async function GET(
   request: NextRequest,
   context: { params: Promise<{ provider: string }> },
 ) {
-  const supabase = await createClient();
+  const supabase = await createClient({ writeCookies: true });
 
   if (!supabase) {
     return NextResponse.json({ error: "Authentication is unavailable." }, { status: 503 });

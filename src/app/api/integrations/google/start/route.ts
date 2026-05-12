@@ -9,7 +9,7 @@ function getSafeNext(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
-  const supabase = await createClient();
+  const supabase = await createClient({ writeCookies: true });
 
   if (!supabase) {
     return NextResponse.redirect(new URL("/login?reason=auth-unavailable", request.url));

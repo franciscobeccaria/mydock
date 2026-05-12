@@ -80,6 +80,8 @@ export async function getGmailItems(userId?: string): Promise<WidgetItem[]> {
       summary: message.snippet ?? "",
       metadata: {
         unread: message.labelIds?.includes("UNREAD") ?? false,
+        important: message.labelIds?.includes("IMPORTANT") ?? false,
+        labels: message.labelIds ?? [],
         label: "Inbox",
       },
     } satisfies WidgetItem;

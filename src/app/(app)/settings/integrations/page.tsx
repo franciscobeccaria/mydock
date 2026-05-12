@@ -33,23 +33,20 @@ export default async function IntegrationsPage({
           : undefined;
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen bg-[#FAFAFA]">
       <AppHeader name={displayName} email={user?.email} />
-      <PageContainer className="space-y-8 py-8">
+      <PageContainer className="space-y-8 py-8 sm:py-10">
         <div>
-          <p className="text-muted-foreground text-sm tracking-[0.18em] uppercase">
-            Settings
-          </p>
-          <h1 className="mt-2 text-3xl font-semibold tracking-tight">
+          <h1 className="text-3xl font-semibold tracking-tight text-[#18181B]">
             Integrations
           </h1>
-          <p className="text-muted-foreground mt-2 max-w-3xl">
-            Choose what MyDock can bring into your workspace. You can update access whenever your routine changes.
+          <p className="mt-2 max-w-2xl text-sm text-[#71717A]">
+            Choose which apps MyDock can surface in your workspace and update access whenever you need to.
           </p>
         </div>
 
         {message ? (
-          <Alert>
+          <Alert className="rounded-[24px] border-[#E4E4E7] bg-white">
             <AlertTitle>Heads up</AlertTitle>
             <AlertDescription>{message}</AlertDescription>
           </Alert>

@@ -1,14 +1,16 @@
 "use client";
 
-import { useQueryClient } from "@tanstack/react-query";
-import { LayoutGrid, LogOut, RefreshCw, Settings, Sparkles } from "lucide-react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useTransition } from "react";
-import { toast } from "sonner";
+import {
+  LayoutGrid,
+  LogOut,
+  Plus,
+  Settings,
+  Sparkles,
+} from "lucide-react";
+import { usePathname, useRouter } from "next/navigation";
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -25,85 +27,75 @@ export function AppHeader({
   name: string;
   email: string | undefined;
 }) {
+  const pathname = usePathname();
   const router = useRouter();
-  const queryClient = useQueryClient();
-  const [isPending, startTransition] = useTransition();
+  const isDashboard = pathname === "/dashboard";
 
   return (
-    <header className="border-border/70 bg-background/85 sticky top-0 z-20 border-b backdrop-blur-xl">
-      <div className="mx-auto flex max-w-7xl items-center gap-4 px-4 py-4 sm:px-6 lg:px-8">
-        <div className="flex min-w-0 flex-1 items-center gap-3">
-          <div className="bg-primary text-primary-foreground flex size-10 items-center justify-center rounded-2xl shadow-sm">
-            <Sparkles className="size-5" />
+    <header className="sticky top-0 z-20 border-b border-[#ECECEF] bg-[#FAFAFA]/95 backdrop-blur-xl">
+      <div className="mx-auto flex max-w-[1400px] items-center justify-between gap-4 px-5 py-5 sm:px-8">
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="flex size-10 items-center justify-center rounded-2xl border border-[#ECECEF] bg-white text-[#18181B] shadow-sm">
+            <Sparkles className="size-[18px]" />
           </div>
-          <div className="min-w-0">
-            <span className="text-lg font-semibold tracking-tight">MyDock</span>
-            <p className="text-muted-foreground truncate text-sm">
-              Your workday, in one place.
-            </p>
-          </div>
+          <span className="text-lg font-semibold tracking-tight text-[#18181B]">
+            MyDock
+          </span>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
           <Button
             variant="outline"
             size="sm"
-            onClick={() => {
-              startTransition(async () => {
-                await fetch("/api/widgets/refresh", { method: "POST" });
-                await Promise.all([
-                  queryClient.invalidateQueries({ queryKey: ["widgets"] }),
-                  queryClient.invalidateQueries({ queryKey: ["integrations-status"] }),
-                ]);
-                toast.success("Workspace refreshed.");
-              });
-            }}
+            disabled
+            className="rounded-full border-[#E4E4E7] bg-white px-4 text-[#18181B] shadow-sm hover:bg-[#F4F4F5]"
           >
-            <RefreshCw className={isPending ? "mr-2 size-4 animate-spin" : "mr-2 size-4"} />
-            Refresh
+            <Plus className="size-4" />
+            Add widget
           </Button>
-          <Link
-            href="/settings/integrations"
-            className={buttonVariants({ variant: "outline", size: "sm" })}
-          >
-            <Settings className="mr-2 size-4" />
-            Integrations
-          </Link>
 
           <DropdownMenu>
             <DropdownMenuTrigger
-              render={<Button variant="ghost" className="h-10 rounded-full px-1.5" />}
+              render={
+                <Button
+                  variant="ghost"
+                  className="h-11 rounded-full border border-transparent px-1.5 hover:bg-transparent"
+                />
+              }
             >
-              <Avatar className="border-border/70 size-8 border">
+              <Avatar className="size-9 border border-[#E4E4E7] bg-white">
                 <AvatarFallback>{name.slice(0, 2).toUpperCase()}</AvatarFallback>
               </Avatar>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-64">
+            <DropdownMenuContent align="end" className="w-64 rounded-2xl">
               <div className="px-2 py-1.5">
                 <div className="flex items-center gap-3">
-                  <Avatar className="border-border/70 size-10 border">
+                  <Avatar className="size-10 border border-[#E4E4E7] bg-white">
                     <AvatarFallback>{name.slice(0, 2).toUpperCase()}</AvatarFallback>
                   </Avatar>
                   <div className="min-w-0">
-                    <p className="truncate font-medium">{name}</p>
-                    <p className="text-muted-foreground truncate text-xs font-normal">
+                    <p className="truncate font-medium text-[#18181B]">{name}</p>
+                    <p className="truncate text-xs font-normal text-[#71717A]">
                       {email ?? "Signed in"}
                     </p>
                   </div>
                 </div>
               </div>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => router.push("/dashboard")}>
-                <LayoutGrid className="mr-2 size-4" /> Dashboard
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => router.push("/settings/integrations")}>
-                <Settings className="mr-2 size-4" /> Integrations
-              </DropdownMenuItem>
+              {isDashboard ? (
+                <DropdownMenuItem onClick={() => router.push("/settings/integrations")}>
+                  <Settings className="mr-2 size-4" /> Integrations
+                </DropdownMenuItem>
+              ) : (
+                <DropdownMenuItem onClick={() => router.push("/dashboard")}>
+                  <LayoutGrid className="mr-2 size-4" /> Dashboard
+                </DropdownMenuItem>
+              )}
               <DropdownMenuSeparator />
               <form action="/auth/signout" method="post">
                 <button
                   className={cn(
-                    "flex w-full items-center rounded-md px-2 py-1.5 text-sm",
+                    "flex w-full items-center rounded-md px-2 py-1.5 text-sm text-[#18181B]",
                     "hover:bg-accent",
                   )}
                   type="submit"

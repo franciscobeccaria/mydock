@@ -11,7 +11,7 @@ const bodySchema = z
   .optional();
 
 export async function POST(request: NextRequest) {
-  const supabase = await createClient();
+  const supabase = await createClient({ writeCookies: true });
 
   if (!supabase) {
     return NextResponse.json(
