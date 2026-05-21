@@ -59,7 +59,7 @@ function getWidgetPayload(
   return makeLoadingPayload(provider, title);
 }
 
-export function WidgetGrid() {
+export default function WidgetGrid() {
   const linearQuery = useQuery({
     queryKey: ["integrations", "linear", "issues"],
     queryFn: () => fetchWidget("linear"),

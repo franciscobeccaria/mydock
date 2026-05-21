@@ -1,9 +1,13 @@
+import { connection } from "next/server";
+
 import { AppHeader } from "@/components/layout/app-header";
 import { PageContainer } from "@/components/layout/page-container";
-import { WidgetGrid } from "@/components/widgets/widget-grid";
+import { WidgetGridClient } from "@/components/widgets/widget-grid-client";
 import { createClient } from "@/lib/supabase/server";
 
 export default async function DashboardPage() {
+  await connection();
+
   const supabase = await createClient();
   const {
     data: { user },
@@ -16,7 +20,7 @@ export default async function DashboardPage() {
     <div className="min-h-screen bg-[#FAFAFA]">
       <AppHeader name={displayName} email={user?.email} />
       <PageContainer className="py-8 sm:py-10">
-        <WidgetGrid />
+        <WidgetGridClient />
       </PageContainer>
     </div>
   );

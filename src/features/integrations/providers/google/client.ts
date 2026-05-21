@@ -1,6 +1,7 @@
 import { decryptSecret, encryptSecret } from "@/lib/crypto";
 import { env } from "@/lib/env";
 import { createServiceRoleClient } from "@/lib/supabase/service";
+import { cookies } from "next/headers";
 
 type GoogleAccountRow = {
   id: string;
@@ -17,6 +18,18 @@ type RefreshedGoogleToken = {
   scopes: string[];
   refreshToken?: string | null;
 };
+
+const GOOGLE_ACCESS_COOKIE = "mydock_google_access_token";
+const GOOGLE_REFRESH_COOKIE = "mydock_google_refresh_token";
+
+async function getGoogleTokensFromCookies() {
+  const cookieStore = await cookies();
+
+  return {
+    accessToken: decryptSecret(cookieStore.get(GOOGLE_ACCESS_COOKIE)?.value),
+    refreshToken: decryptSecret(cookieStore.get(GOOGLE_REFRESH_COOKIE)?.value),
+  };
+}
 
 async function getGoogleAccountRow(userId: string) {
   const serviceClient = createServiceRoleClient();
@@ -120,35 +133,51 @@ async function refreshGoogleAccessToken(
 }
 
 async function resolveGoogleAccessToken(userId: string) {
-  const { row } = await getGoogleAccountRow(userId);
-  const accessToken = decryptSecret(row.access_token_encrypted);
-  const refreshToken = decryptSecret(row.refresh_token_encrypted);
-  const expiresAt = row.token_expires_at ? new Date(row.token_expires_at).getTime() : null;
-  const isExpired = expiresAt ? expiresAt <= Date.now() + 60_000 : false;
+  try {
+    const { row } = await getGoogleAccountRow(userId);
+    const accessToken = decryptSecret(row.access_token_encrypted);
+    const refreshToken = decryptSecret(row.refresh_token_encrypted);
+    const expiresAt = row.token_expires_at ? new Date(row.token_expires_at).getTime() : null;
+    const isExpired = expiresAt ? expiresAt <= Date.now() + 60_000 : false;
 
-  if (accessToken && !isExpired) {
+    if (accessToken && !isExpired) {
+      return {
+        accessToken,
+        accountEmail: row.provider_account_email,
+        scopes: row.scopes,
+        accountId: row.id,
+        refreshToken,
+      };
+    }
+
+    if (!refreshToken) {
+      throw new Error("The Google connection no longer has a refresh token.");
+    }
+
+    const refreshed = await refreshGoogleAccessToken(row.id, refreshToken, row.scopes);
+
     return {
-      accessToken,
+      accessToken: refreshed.accessToken,
       accountEmail: row.provider_account_email,
-      scopes: row.scopes,
+      scopes: refreshed.scopes,
       accountId: row.id,
-      refreshToken,
+      refreshToken: refreshed.refreshToken ?? refreshToken,
     };
+  } catch {
+    const cookieTokens = await getGoogleTokensFromCookies();
+
+    if (cookieTokens.accessToken) {
+      return {
+        accessToken: cookieTokens.accessToken,
+        accountEmail: null,
+        scopes: [],
+        accountId: "cookie-fallback",
+        refreshToken: cookieTokens.refreshToken,
+      };
+    }
+
+    throw new Error("No Google access token is available for this user.");
   }
-
-  if (!refreshToken) {
-    throw new Error("The Google connection no longer has a refresh token.");
-  }
-
-  const refreshed = await refreshGoogleAccessToken(row.id, refreshToken, row.scopes);
-
-  return {
-    accessToken: refreshed.accessToken,
-    accountEmail: row.provider_account_email,
-    scopes: refreshed.scopes,
-    accountId: row.id,
-    refreshToken: refreshed.refreshToken ?? refreshToken,
-  };
 }
 
 export async function googleApiFetch<T>(
@@ -186,4 +215,3 @@ export async function googleApiFetch<T>(
 
   return (await response.json()) as T;
 }
-

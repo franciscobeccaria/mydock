@@ -1,8 +1,12 @@
 import { type EmailOtpType } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
 
+import { encryptSecret } from "@/lib/crypto";
 import { syncGoogleWorkspaceFromSession } from "@/features/integrations/providers/google/account";
 import { createClient } from "@/lib/supabase/server";
+
+const GOOGLE_ACCESS_COOKIE = "mydock_google_access_token";
+const GOOGLE_REFRESH_COOKIE = "mydock_google_refresh_token";
 
 function getSafeNext(request: NextRequest) {
   const next = request.nextUrl.searchParams.get("next") ?? "/dashboard";
@@ -39,6 +43,8 @@ export async function GET(request: NextRequest) {
     const { data, error } = await supabase.auth.exchangeCodeForSession(code);
 
     if (!error) {
+      const response = NextResponse.redirect(redirectUrl);
+
       if (
         data.session &&
         isGoogleSessionProvider(
@@ -47,6 +53,30 @@ export async function GET(request: NextRequest) {
           data.session.user.identities,
         )
       ) {
+        if (data.session.provider_token) {
+          response.cookies.set(GOOGLE_ACCESS_COOKIE, encryptSecret(data.session.provider_token) ?? "", {
+            httpOnly: true,
+            secure: true,
+            sameSite: "lax",
+            path: "/",
+            maxAge: 60 * 60 * 24 * 7,
+          });
+        }
+
+        if (data.session.provider_refresh_token) {
+          response.cookies.set(
+            GOOGLE_REFRESH_COOKIE,
+            encryptSecret(data.session.provider_refresh_token) ?? "",
+            {
+              httpOnly: true,
+              secure: true,
+              sameSite: "lax",
+              path: "/",
+              maxAge: 60 * 60 * 24 * 30,
+            },
+          );
+        }
+
         try {
           await syncGoogleWorkspaceFromSession({
             sessionClient: supabase,
@@ -57,7 +87,7 @@ export async function GET(request: NextRequest) {
         }
       }
 
-      return NextResponse.redirect(redirectUrl);
+      return response;
     }
   }
 
