@@ -12,6 +12,7 @@ MyDock is a desktop-first productivity dashboard that brings Gmail, Google Calen
 - Linear integration scaffolded, but not yet live
 - Desktop-first dashboard built with shadcn/ui
 - Supabase schema, auth, and RLS already set up
+- Production deployment is live on Vercel at `https://mydock-teal.vercel.app`
 
 ## Tech stack
 
@@ -40,6 +41,8 @@ Open:
 ```txt
 http://localhost:3000/login
 ```
+
+Before running locally, make sure `.env.local` contains the real Supabase and Google values. Avoid overwriting it with `vercel env pull` unless you intend to rebuild the local file afterward.
 
 ## Required env vars
 
@@ -80,6 +83,8 @@ The app currently uses Google OAuth to:
 - request Gmail, Calendar, and Tasks permissions
 - store Google account tokens server-side
 - fetch real widget data from Google APIs
+
+The hosted app is working in both local and production environments. The current implementation persists Google account data server-side and also keeps a secure cookie fallback so the dashboard can continue loading widgets if the server-only account record is temporarily unavailable.
 
 ### Linear
 
@@ -133,6 +138,7 @@ pnpm format
 - set `NEXT_PUBLIC_APP_URL`
 - configure Supabase redirect URLs for your deployed domain
 - configure Google OAuth authorized origins and redirect URLs
+- keep `framework` set to `nextjs` (see `vercel.json`)
 
 See `docs/vercel-deploy.md`.
 
@@ -140,7 +146,8 @@ See `docs/vercel-deploy.md`.
 
 - Connect and test the live Linear integration
 - Replace Linear mock data with real GraphQL data
-- Iterate and improve the dashboard UI/UX
+- Move Linear from scaffolded OAuth to a real end-to-end connection flow
+- Iterate and improve the dashboard UI/UX after Linear is live
 - Refine widget density, hierarchy, spacing, and states
 - Improve integrations settings UX and connection feedback
 - Add disconnect/reconnect management flows

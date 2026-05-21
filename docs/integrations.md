@@ -2,27 +2,28 @@
 
 ## Current state
 
-The MVP is mock-first for provider data:
+Current provider state:
 
-- Linear
-- Gmail
-- Google Tasks
-- Google Calendar
+- Gmail — live
+- Google Tasks — live
+- Google Calendar — live
+- Linear — scaffolded, not live yet
 
-The dashboard renders realistic mock items immediately after authentication, while the real OAuth/token exchange flows remain scaffolded behind server routes.
+Google now runs through the real hosted and local OAuth flow, stores provider access server-side, and fetches real widget data from Google APIs. Linear still uses scaffolded OAuth start logic and mock widget data.
 
 ## Google model
 
 Google uses one shared OAuth flow in this architecture.
 
-When fully implemented, the callback should:
+Today, the Google callback:
 
-1. exchange the authorization code server-side
-2. persist encrypted tokens in `integration_tokens`
-3. upsert three `integrations` rows for the current user:
+1. exchanges the authorization code through Supabase Auth
+2. syncs provider account state for the signed-in user
+3. upserts three `integrations` rows for the current user:
    - `gmail`
    - `google_tasks`
    - `google_calendar`
+4. loads widget data from the Gmail, Google Tasks, and Google Calendar APIs
 
 ## Scope guidance
 
@@ -44,3 +45,5 @@ When fully implemented, the callback should:
 
 - OAuth and GraphQL reads remain scaffolded in code
 - Token handling must remain server-only
+- The current callback route still redirects to `linear-unavailable`
+- The current adapter still returns mock items
