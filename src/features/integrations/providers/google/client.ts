@@ -180,13 +180,17 @@ async function resolveGoogleAccessToken(userId: string) {
   }
 }
 
-export async function googleApiFetch<T>(
-  userId: string,
+type ResolvedGoogleToken = Awaited<ReturnType<typeof resolveGoogleAccessToken>>;
+
+export async function resolveGoogleToken(userId: string): Promise<ResolvedGoogleToken> {
+  return resolveGoogleAccessToken(userId);
+}
+
+export async function googleApiFetchWithToken<T>(
+  account: ResolvedGoogleToken,
   input: string | URL,
   init?: RequestInit,
-) {
-  const account = await resolveGoogleAccessToken(userId);
-
+): Promise<T> {
   const performRequest = async (accessToken: string) =>
     fetch(input, {
       ...init,
@@ -214,4 +218,13 @@ export async function googleApiFetch<T>(
   }
 
   return (await response.json()) as T;
+}
+
+export async function googleApiFetch<T>(
+  userId: string,
+  input: string | URL,
+  init?: RequestInit,
+) {
+  const account = await resolveGoogleAccessToken(userId);
+  return googleApiFetchWithToken<T>(account, input, init);
 }

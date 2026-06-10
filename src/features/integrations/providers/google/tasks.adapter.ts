@@ -15,6 +15,7 @@ type TasksResponse = {
     title?: string;
     due?: string;
     status?: string;
+    updated?: string;
   }[];
 };
 
@@ -25,7 +26,7 @@ export async function getGoogleTaskItems(userId?: string): Promise<WidgetItem[]>
 
   const taskLists = await googleApiFetch<TaskListsResponse>(
     userId,
-    "https://tasks.googleapis.com/tasks/v1/users/@me/lists?maxResults=10",
+    "https://tasks.googleapis.com/tasks/v1/users/@me/lists?maxResults=20",
   );
 
   const lists = taskLists.items ?? [];
@@ -41,7 +42,7 @@ export async function getGoogleTaskItems(userId?: string): Promise<WidgetItem[]>
       );
       url.searchParams.set("showCompleted", "false");
       url.searchParams.set("showHidden", "false");
-      url.searchParams.set("maxResults", "5");
+      url.searchParams.set("maxResults", "100");
 
       const response = await googleApiFetch<TasksResponse>(userId, url);
       return (response.items ?? []).map((task) => ({
@@ -51,15 +52,17 @@ export async function getGoogleTaskItems(userId?: string): Promise<WidgetItem[]>
     }),
   );
 
-  return tasksByList
-    .flat()
-    .filter((task) => Boolean(task.title))
+  const allTasks = tasksByList.flat().filter((task) => Boolean(task.title));
+
+  // The Google Tasks API exposes no "starred" status (it's a UI-only smart
+  // list), so the widget filters by real task list. We sort newest-first by
+  // `updated`, the only recency signal the API returns.
+  return allTasks
     .sort((a, b) => {
-      const aTime = a.due ? new Date(a.due).getTime() : Number.MAX_SAFE_INTEGER;
-      const bTime = b.due ? new Date(b.due).getTime() : Number.MAX_SAFE_INTEGER;
-      return aTime - bTime;
+      const aTime = a.updated ? new Date(a.updated).getTime() : 0;
+      const bTime = b.updated ? new Date(b.updated).getTime() : 0;
+      return bTime - aTime;
     })
-    .slice(0, 5)
     .map((task) => ({
       id: task.id ?? crypto.randomUUID(),
       provider: "google_tasks",
@@ -67,5 +70,9 @@ export async function getGoogleTaskItems(userId?: string): Promise<WidgetItem[]>
       subtitle: task.listTitle,
       status: task.status ?? "needsAction",
       dueAt: task.due,
+      occurredAt: task.updated,
+      metadata: {
+        list: task.listTitle,
+      },
     }));
 }

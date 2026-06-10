@@ -1,26 +1,33 @@
 import {
+  SiLinear,
   SiGmail,
   SiGooglecalendar,
   SiGoogletasks,
-  SiLinear,
 } from "@icons-pack/react-simple-icons";
 import { LayoutGrid } from "lucide-react";
 
+import { cn } from "@/lib/utils";
 import type { Provider } from "@/features/integrations/types";
 
-const brandClassName = "size-5";
+export function ProviderIcon({
+  provider,
+  className,
+}: {
+  provider: Provider | "today";
+  className?: string;
+}) {
+  const iconClassName = cn("size-[18px]", className);
 
-export function ProviderIcon({ provider }: { provider: Provider | "today" }) {
   switch (provider) {
     case "linear":
-      return <SiLinear className={brandClassName} color="#5E6AD2" />;
+      return <SiLinear className={iconClassName} color="#5E6AD2" />;
     case "gmail":
-      return <SiGmail className={brandClassName} />;
+      return <SiGmail className={iconClassName} color="#EA4335" />;
     case "google_tasks":
-      return <SiGoogletasks className={brandClassName} color="#188038" />;
+      return <SiGoogletasks className={iconClassName} color="#2684FC" />;
     case "google_calendar":
-      return <SiGooglecalendar className={brandClassName} color="#4285F4" />;
+      return <SiGooglecalendar className={iconClassName} color="#4285F4" />;
     default:
-      return <LayoutGrid className={brandClassName} />;
+      return <LayoutGrid className={iconClassName} />;
   }
 }

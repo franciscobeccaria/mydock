@@ -1,5 +1,5 @@
 import { getGoogleCalendarItems } from "@/features/integrations/providers/google/calendar.adapter";
-import { getGmailItems } from "@/features/integrations/providers/google/gmail.adapter";
+import { getGmailItems, type GmailView } from "@/features/integrations/providers/google/gmail.adapter";
 import { getRequiredGoogleScopes } from "@/features/integrations/providers/google/types";
 import { getGoogleTaskItems } from "@/features/integrations/providers/google/tasks.adapter";
 import { getLinearItems } from "@/features/integrations/providers/linear/adapter";
@@ -150,6 +150,7 @@ function buildWidgetPayload(
   items: WidgetPayload["items"],
   isMock: boolean,
   previewState?: WidgetViewState,
+  extra?: { unreadCount?: number },
 ): WidgetPayload {
   const lastUpdatedAt = new Date().toISOString();
   const scopeStatus = statusRecord
@@ -247,6 +248,7 @@ function buildWidgetPayload(
     lastUpdatedAt,
     accountEmail: statusRecord?.providerAccountEmail ?? null,
     ...scopeStatus,
+    ...(extra ?? {}),
   };
 }
 
@@ -254,6 +256,7 @@ export async function getWidgetPayload(
   provider: Provider,
   userId: string,
   previewState?: WidgetViewState,
+  view?: GmailView,
 ): Promise<WidgetPayload> {
   const statusRecords = await getIntegrationStatusRecords(userId);
   const statusRecord = statusRecords.find((record) => record.provider === provider);
@@ -263,20 +266,25 @@ export async function getWidgetPayload(
   }
 
   try {
+    if (provider === "gmail") {
+      const { items, unreadCount } = await getGmailItems(userId, view);
+      return buildWidgetPayload(provider, statusRecord, items, false, previewState, {
+        unreadCount,
+      });
+    }
+
     const items =
       provider === "linear"
-        ? await getLinearItems()
-        : provider === "gmail"
-          ? await getGmailItems(userId)
-          : provider === "google_tasks"
-            ? await getGoogleTaskItems(userId)
-            : await getGoogleCalendarItems(userId);
+        ? await getLinearItems(userId)
+        : provider === "google_tasks"
+          ? await getGoogleTaskItems(userId)
+          : await getGoogleCalendarItems(userId);
 
     return buildWidgetPayload(
       provider,
       statusRecord,
       items,
-      provider === "linear",
+      false,
       previewState,
     );
   } catch {
@@ -302,18 +310,26 @@ export async function getWidgetsResponse(
       }
 
       try {
+        if (provider === "gmail") {
+          const { items, unreadCount } = await getGmailItems(userId);
+          return [
+            provider,
+            buildWidgetPayload(provider, statusRecord, items, false, previewState, {
+              unreadCount,
+            }),
+          ] as const;
+        }
+
         const items =
           provider === "linear"
-            ? await getLinearItems()
-            : provider === "gmail"
-              ? await getGmailItems(userId)
-              : provider === "google_tasks"
-                ? await getGoogleTaskItems(userId)
-                : await getGoogleCalendarItems(userId);
+            ? await getLinearItems(userId)
+            : provider === "google_tasks"
+              ? await getGoogleTaskItems(userId)
+              : await getGoogleCalendarItems(userId);
 
         return [
           provider,
-          buildWidgetPayload(provider, statusRecord, items, provider === "linear", previewState),
+          buildWidgetPayload(provider, statusRecord, items, false, previewState),
         ] as const;
       } catch {
         return [

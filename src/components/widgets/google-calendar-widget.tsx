@@ -1,6 +1,6 @@
 "use client";
 
-import { endOfWeek, format, isToday, isTomorrow, isWithinInterval } from "date-fns";
+import { format, isToday } from "date-fns";
 import { useMemo, useState } from "react";
 
 import { WidgetCard } from "@/components/widgets/widget-card";
@@ -19,7 +19,7 @@ import {
 } from "@/components/ui/select";
 import type { WidgetPayload } from "@/features/integrations/types";
 
-type CalendarView = "today" | "this_week" | "upcoming";
+type CalendarView = "today" | "next";
 
 export function GoogleCalendarWidget({ payload }: { payload: WidgetPayload }) {
   const [view, setView] = useState<CalendarView>("today");
@@ -28,50 +28,36 @@ export function GoogleCalendarWidget({ payload }: { payload: WidgetPayload }) {
     if (view === "today") {
       return payload.items.filter((item) => {
         if (!item.occurredAt) return false;
-        const date = new Date(item.occurredAt);
-        return isToday(date) || isTomorrow(date);
+        return isToday(new Date(item.occurredAt));
       });
     }
 
-    if (view === "this_week") {
-      const now = new Date();
-      const weekEnd = endOfWeek(now, { weekStartsOn: 1 });
-      return payload.items.filter((item) => {
-        if (!item.occurredAt) return false;
-        return isWithinInterval(new Date(item.occurredAt), { start: now, end: weekEnd });
-      });
-    }
-
+    // "next" — every upcoming event (adapter already returns timeMin = now,
+    // ordered by start time).
     return payload.items;
   }, [payload.items, view]);
 
   const emptyMessage =
     view === "today"
-      ? "No events today or tomorrow."
-      : view === "this_week"
-        ? "Nothing else is scheduled this week."
-        : payload.emptyMessage ?? "No events on deck.";
+      ? "No events today."
+      : payload.emptyMessage ?? "No upcoming events.";
+
+  const selectedLabel = view === "next" ? "All next" : "All today";
 
   return (
     <WidgetCard
       provider="google_calendar"
       title="Calendar"
+      headerLabel={selectedLabel}
       headerControl={
         <Select value={view} onValueChange={(value) => setView(value as CalendarView)}>
-          <SelectTrigger className="min-w-[126px]">
-            <SelectValue>
-              {(value: CalendarView | null) => {
-                if (value === "this_week") return "This week";
-                if (value === "upcoming") return "Upcoming";
-                return "Today";
-              }}
-            </SelectValue>
+          <SelectTrigger className="h-8 min-w-[108px] px-2.5 text-[13px]">
+            <SelectValue>{() => selectedLabel}</SelectValue>
             <SelectIcon />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="today">Today</SelectItem>
-            <SelectItem value="this_week">This week</SelectItem>
-            <SelectItem value="upcoming">Upcoming</SelectItem>
+            <SelectItem value="today">All today</SelectItem>
+            <SelectItem value="next">All next</SelectItem>
           </SelectContent>
         </Select>
       }
@@ -89,27 +75,24 @@ export function GoogleCalendarWidget({ payload }: { payload: WidgetPayload }) {
       ) : null}
       {payload.state === "connected" ? (
         items.length > 0 ? (
-          <div className="space-y-2.5">
+          <div className="-mx-1 space-y-0.5">
             {items.slice(0, 5).map((item) => (
               <div
                 key={item.id}
-                className="grid grid-cols-[74px_minmax(0,1fr)] gap-4 rounded-[22px] border border-[#ECECEF] bg-[#FCFCFC] px-4 py-3"
+                className="grid grid-cols-[54px_minmax(0,1fr)] gap-2 rounded-[10px] px-2 py-1.5 transition-colors hover:bg-[#F8F8FA]"
               >
-                <div className="pt-0.5 text-sm font-medium text-[#71717A]">
+                <div className="pt-0.5 text-[10px] font-medium text-[#71717A]">
                   {item.occurredAt ? format(new Date(item.occurredAt), "p") : "All day"}
                 </div>
                 <div className="min-w-0">
-                  <div className="flex items-start gap-2">
-                    <span className="mt-1.5 size-2 rounded-full bg-[#3B82F6]" />
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium text-[#18181B]">
-                        {item.title}
-                      </p>
-                      <p className="mt-1 truncate text-sm text-[#71717A]">
-                        {(item.metadata?.location as string | undefined) ?? "No location"}
-                      </p>
-                    </div>
-                  </div>
+                  <p className="truncate text-[13px] font-medium text-[#18181B]">
+                    {item.title}
+                  </p>
+                  {item.metadata?.location ? (
+                    <p className="mt-0.5 truncate text-[11px] text-[#71717A]">
+                      {item.metadata.location as string}
+                    </p>
+                  ) : null}
                 </div>
               </div>
             ))}

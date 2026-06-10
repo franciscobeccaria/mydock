@@ -56,6 +56,18 @@ export type WidgetPayload = ScopeStatus & {
   accountEmail?: string | null;
   error?: string;
   emptyMessage?: string;
+  /** Gmail: total unread messages in the inbox (not just among the fetched items). */
+  unreadCount?: number;
+};
+
+export type WidgetProps = {
+  payload: WidgetPayload;
+  /** Re-fetch this widget's data — wired to the error state's "Try again" action. */
+  onRetry?: () => void;
+  isRetrying?: boolean;
+  /** Gmail: which list to show. Lifted to the grid so it can key the per-view fetch. */
+  view?: "all" | "unread";
+  onViewChange?: (view: string) => void;
 };
 
 export type TodaySummary = {

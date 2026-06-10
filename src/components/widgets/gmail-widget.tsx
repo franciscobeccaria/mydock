@@ -1,15 +1,15 @@
 "use client";
 
-import { format } from "date-fns";
-import { useMemo, useState } from "react";
+import { format, isToday } from "date-fns";
+import Link from "next/link";
 
+import { useWidgetPreference } from "@/components/dashboard/use-widget-preference";
 import { WidgetCard } from "@/components/widgets/widget-card";
 import { WidgetEmptyState } from "@/components/widgets/widget-empty-state";
 import { WidgetErrorState } from "@/components/widgets/widget-error-state";
 import { WidgetLoadingState } from "@/components/widgets/widget-loading-state";
 import { WidgetNotConnectedState } from "@/components/widgets/widget-not-connected-state";
 import { WidgetPermissionRequiredState } from "@/components/widgets/widget-permission-required-state";
-import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -18,54 +18,75 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import type { WidgetPayload } from "@/features/integrations/types";
+import type { WidgetProps } from "@/features/integrations/types";
 
-type GmailView = "inbox" | "unread" | "important";
+type GmailView = "all" | "unread";
 
-export function GmailWidget({ payload }: { payload: WidgetPayload }) {
-  const [view, setView] = useState<GmailView>("inbox");
+/** Emails from today show the time (6:54 PM); older emails show the date (2 Jun). */
+function formatEmailDate(iso?: string) {
+  if (!iso) {
+    return "";
+  }
 
-  const items = useMemo(() => {
-    if (view === "unread") {
-      return payload.items.filter((item) => item.metadata?.unread === true);
-    }
+  const date = new Date(iso);
+  return isToday(date) ? format(date, "p") : format(date, "d MMM");
+}
 
-    if (view === "important") {
-      return payload.items.filter((item) => item.metadata?.important === true);
-    }
+export function GmailWidget({
+  payload,
+  onRetry,
+  isRetrying,
+  view: viewProp,
+  onViewChange,
+}: WidgetProps) {
+  // The grid owns the view so it can key the per-view fetch; fall back to the local
+  // preference when the widget is rendered standalone (e.g. previews/tests).
+  const [viewPref, setViewPref] = useWidgetPreference("gmail-view", "all");
+  const view = (viewProp ?? viewPref) as GmailView;
+  const setView = onViewChange ?? setViewPref;
 
-    return payload.items;
-  }, [payload.items, view]);
+  // Each view is its own server-fetched list now — no client-side filtering.
+  const items = payload.items;
 
   const emptyMessage =
     view === "unread"
       ? "No unread emails right now."
-      : view === "important"
-        ? "No important emails right now."
-        : payload.emptyMessage ?? "Inbox zero. Nice.";
+      : payload.emptyMessage ?? "Inbox zero. Nice.";
+
+  const selectedLabel = view === "unread" ? "Unread" : "All";
 
   return (
     <WidgetCard
       provider="gmail"
       title="Gmail"
+      headerBadge={
+        payload.unreadCount && payload.unreadCount > 0 ? (
+          <span className="text-[11px] leading-none whitespace-nowrap text-[#4285F4]">
+            {payload.unreadCount} unread
+          </span>
+        ) : null
+      }
+      headerLabel={selectedLabel}
       headerControl={
-        <Select value={view} onValueChange={(value) => setView(value as GmailView)}>
-          <SelectTrigger className="min-w-[118px]">
-            <SelectValue />
+        <Select value={view} onValueChange={(value) => setView(String(value))}>
+          <SelectTrigger className="h-8 min-w-[102px] px-2.5 text-[13px]">
+            <SelectValue>{() => selectedLabel}</SelectValue>
             <SelectIcon />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="inbox">Inbox</SelectItem>
+            <SelectItem value="all">All</SelectItem>
             <SelectItem value="unread">Unread</SelectItem>
-            <SelectItem value="important">Important</SelectItem>
           </SelectContent>
         </Select>
       }
-      footerAction={{ label: "Open in Gmail", href: "https://mail.google.com/mail/u/0/#inbox" }}
     >
       {payload.state === "loading" ? <WidgetLoadingState /> : null}
       {payload.state === "error" ? (
-        <WidgetErrorState message={payload.error ?? "Gmail could not load."} />
+        <WidgetErrorState
+          message={payload.error ?? "Gmail could not load."}
+          onRetry={onRetry}
+          isRetrying={isRetrying}
+        />
       ) : null}
       {payload.state === "empty" ? <WidgetEmptyState message={emptyMessage} /> : null}
       {payload.state === "not_connected" ? (
@@ -76,39 +97,56 @@ export function GmailWidget({ payload }: { payload: WidgetPayload }) {
       ) : null}
       {payload.state === "connected" ? (
         items.length > 0 ? (
-          <div className="space-y-2.5">
-            {items.slice(0, 5).map((item) => (
-              <div
-                key={item.id}
-                className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-3 rounded-[22px] border border-[#ECECEF] bg-[#FCFCFC] px-4 py-3"
-              >
-                <span className="mt-1 size-4 rounded-[5px] border border-[#D4D4D8] bg-white" />
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <p className="truncate text-sm font-medium text-[#18181B]">
-                      {item.subtitle}
+          <div className="-mx-1 space-y-0.5">
+            {items.slice(0, 10).map((item) => {
+              const unread = item.metadata?.unread === true;
+              const messageCount = Number(item.metadata?.messageCount ?? 1);
+
+              return (
+                <Link
+                  key={item.id}
+                  href={item.url ?? "https://mail.google.com/mail/u/0/#inbox"}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2 rounded-[10px] px-2 py-1.5 transition-colors hover:bg-[#F8F8FA]"
+                >
+                  <div className="min-w-0">
+                    <p
+                      className={
+                        unread
+                          ? "flex items-center gap-1 truncate text-[13px] font-semibold text-[#18181B]"
+                          : "flex items-center gap-1 truncate text-[13px] font-normal text-[#3F3F46]"
+                      }
+                    >
+                      <span className="truncate">{item.subtitle}</span>
+                      {messageCount > 1 ? (
+                        <span className="text-[11px] font-normal whitespace-nowrap text-[#A1A1AA]">
+                          {messageCount}
+                        </span>
+                      ) : null}
                     </p>
-                    {item.metadata?.unread === true ? (
-                      <Badge
-                        variant="secondary"
-                        className="rounded-full bg-[#EEF2FF] px-2 py-0.5 text-[11px] font-medium text-[#4338CA]"
-                      >
-                        Unread
-                      </Badge>
-                    ) : null}
+                    <p
+                      className={
+                        unread
+                          ? "truncate text-[12px] font-medium text-[#18181B]"
+                          : "truncate text-[12px] font-normal text-[#71717A]"
+                      }
+                    >
+                      {item.title}
+                    </p>
                   </div>
-                  <p className="mt-1 truncate text-sm font-medium text-[#18181B]">
-                    {item.title}
-                  </p>
-                  <p className="mt-1 line-clamp-2 text-sm text-[#71717A]">
-                    {item.summary}
-                  </p>
-                </div>
-                <span className="pt-0.5 text-xs font-medium whitespace-nowrap text-[#71717A]">
-                  {item.occurredAt ? format(new Date(item.occurredAt), "p") : ""}
-                </span>
-              </div>
-            ))}
+                  <span
+                    className={
+                      unread
+                        ? "pt-0.5 text-[10px] font-medium whitespace-nowrap text-[#71717A]"
+                        : "pt-0.5 text-[10px] font-normal whitespace-nowrap text-[#A1A1AA]"
+                    }
+                  >
+                    {formatEmailDate(item.occurredAt)}
+                  </span>
+                </Link>
+              );
+            })}
           </div>
         ) : (
           <WidgetEmptyState message={emptyMessage} />

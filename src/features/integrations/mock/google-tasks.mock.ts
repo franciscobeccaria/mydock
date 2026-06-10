@@ -8,6 +8,8 @@ export const googleTasksMockItems: WidgetItem[] = [
     subtitle: "Engineering",
     status: "Due today",
     dueAt: "2026-05-10T21:00:00.000Z",
+    occurredAt: "2026-05-09T08:30:00.000Z",
+    metadata: { list: "Engineering" },
   },
   {
     id: "task-2",
@@ -16,6 +18,8 @@ export const googleTasksMockItems: WidgetItem[] = [
     subtitle: "Product",
     status: "Tomorrow",
     dueAt: "2026-05-11T15:00:00.000Z",
+    occurredAt: "2026-05-08T14:00:00.000Z",
+    metadata: { list: "Product" },
   },
   {
     id: "task-3",
@@ -24,6 +28,8 @@ export const googleTasksMockItems: WidgetItem[] = [
     subtitle: "Design",
     status: "May 17",
     dueAt: "2026-05-17T13:00:00.000Z",
+    occurredAt: "2026-05-07T10:15:00.000Z",
+    metadata: { list: "Design" },
   },
   {
     id: "task-4",
@@ -32,5 +38,7 @@ export const googleTasksMockItems: WidgetItem[] = [
     subtitle: "Research",
     status: "May 20",
     dueAt: "2026-05-20T16:00:00.000Z",
+    occurredAt: "2026-05-06T09:00:00.000Z",
+    metadata: { list: "Research" },
   },
 ];

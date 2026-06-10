@@ -8,9 +8,12 @@ type GoogleCalendarEventsResponse = {
     summary?: string;
     location?: string;
     htmlLink?: string;
+    hangoutLink?: string;
+    colorId?: string;
     start?: { dateTime?: string; date?: string };
     end?: { dateTime?: string; date?: string };
     organizer?: { displayName?: string; email?: string };
+    attendees?: { email?: string; displayName?: string; responseStatus?: string }[];
   }[];
 };
 
@@ -22,7 +25,7 @@ export async function getGoogleCalendarItems(userId?: string): Promise<WidgetIte
   const url = new URL(
     "https://www.googleapis.com/calendar/v3/calendars/primary/events",
   );
-  url.searchParams.set("maxResults", "5");
+  url.searchParams.set("maxResults", "100");
   url.searchParams.set("singleEvents", "true");
   url.searchParams.set("orderBy", "startTime");
   url.searchParams.set("timeMin", new Date().toISOString());
@@ -40,6 +43,12 @@ export async function getGoogleCalendarItems(userId?: string): Promise<WidgetIte
     metadata: {
       endAt: event.end?.dateTime ?? event.end?.date,
       location: event.location,
+      hangoutLink: event.hangoutLink,
+      colorId: event.colorId,
+      attendees: (event.attendees ?? [])
+        .filter((a) => !a.email?.endsWith("resource.calendar.google.com"))
+        .slice(0, 4)
+        .map((a) => ({ name: a.displayName ?? a.email, email: a.email })),
     },
   }));
 }

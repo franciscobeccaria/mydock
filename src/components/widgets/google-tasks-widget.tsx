@@ -1,8 +1,10 @@
 "use client";
 
-import { format, isToday } from "date-fns";
-import { useMemo, useState } from "react";
+import { format } from "date-fns";
+import { Circle } from "lucide-react";
+import { useMemo } from "react";
 
+import { useWidgetPreference } from "@/components/dashboard/use-widget-preference";
 import { WidgetCard } from "@/components/widgets/widget-card";
 import { WidgetEmptyState } from "@/components/widgets/widget-empty-state";
 import { WidgetErrorState } from "@/components/widgets/widget-error-state";
@@ -14,50 +16,82 @@ import {
   SelectContent,
   SelectIcon,
   SelectItem,
+  SelectSeparator,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import type { WidgetPayload } from "@/features/integrations/types";
+import type { WidgetProps } from "@/features/integrations/types";
 
-type TasksView = "mine" | "today" | "all";
+// Reserved sentinel filter value; any other value is a literal list name.
+// Google's "Starred" smart list is intentionally absent: the public Tasks API
+// exposes no starred status, so such a filter could only ever show wrong data.
+const ALL = "all";
 
-export function GoogleTasksWidget({ payload }: { payload: WidgetPayload }) {
-  const [view, setView] = useState<TasksView>("mine");
+export function GoogleTasksWidget({ payload, onRetry, isRetrying }: WidgetProps) {
+  // The list names are already carried on each task by the adapter, so the
+  // per-list filter is derived client-side (mirrors the Linear widget).
+  const listOptions = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          payload.items
+            .map((item) => item.metadata?.list)
+            .filter((value): value is string => typeof value === "string" && value.length > 0),
+        ),
+      ),
+    [payload.items],
+  );
+
+  const [viewPref, setView] = useWidgetPreference("tasks-view", ALL);
+  // A persisted list may no longer exist (renamed/removed) — fall back to all.
+  const view = viewPref === ALL || listOptions.includes(viewPref) ? viewPref : ALL;
 
   const items = useMemo(() => {
-    if (view === "today") {
-      return payload.items.filter((item) => item.dueAt && isToday(new Date(item.dueAt)));
+    if (view !== ALL) {
+      return payload.items.filter((item) => item.metadata?.list === view);
     }
 
+    // Already sorted newest-first by `updated` in the adapter.
     return payload.items;
   }, [payload.items, view]);
 
   const emptyMessage =
-    view === "today"
-      ? "No tasks due today."
+    view !== ALL
+      ? `No tasks in ${view}.`
       : payload.emptyMessage ?? "No tasks waiting.";
+
+  const selectedLabel = view !== ALL && listOptions.includes(view) ? view : "All";
 
   return (
     <WidgetCard
       provider="google_tasks"
       title="Tasks"
+      headerLabel={selectedLabel}
       headerControl={
-        <Select value={view} onValueChange={(value) => setView(value as TasksView)}>
-          <SelectTrigger className="min-w-[108px]">
-            <SelectValue />
+        <Select value={view} onValueChange={(value) => setView(String(value))}>
+          <SelectTrigger className="h-8 min-w-[94px] px-2.5 text-[13px]">
+            <SelectValue>{() => selectedLabel}</SelectValue>
             <SelectIcon />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="mine">Mine</SelectItem>
-            <SelectItem value="today">Today</SelectItem>
-            <SelectItem value="all">All</SelectItem>
+            <SelectItem value={ALL}>All</SelectItem>
+            {listOptions.length > 0 ? <SelectSeparator /> : null}
+            {listOptions.map((option) => (
+              <SelectItem key={option} value={option}>
+                {option}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
       }
     >
       {payload.state === "loading" ? <WidgetLoadingState /> : null}
       {payload.state === "error" ? (
-        <WidgetErrorState message={payload.error ?? "Tasks could not load."} />
+        <WidgetErrorState
+          message={payload.error ?? "Tasks could not load."}
+          onRetry={onRetry}
+          isRetrying={isRetrying}
+        />
       ) : null}
       {payload.state === "empty" ? <WidgetEmptyState message={emptyMessage} /> : null}
       {payload.state === "not_connected" ? (
@@ -68,24 +102,19 @@ export function GoogleTasksWidget({ payload }: { payload: WidgetPayload }) {
       ) : null}
       {payload.state === "connected" ? (
         items.length > 0 ? (
-          <div className="space-y-2.5">
+          <div className="-mx-1 space-y-0.5">
             {items.slice(0, 5).map((item) => (
               <div
                 key={item.id}
-                className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-3 rounded-[22px] border border-[#ECECEF] bg-[#FCFCFC] px-4 py-3"
+                className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 rounded-[10px] px-2 py-1.5 transition-colors hover:bg-[#F8F8FA]"
               >
-                <span className="mt-1 size-4 rounded-full border border-[#D4D4D8] bg-white" />
-                <div className="min-w-0">
-                  <p className="line-clamp-2 text-sm leading-5 font-medium text-[#18181B]">
-                    {item.title}
-                  </p>
-                  <p className="mt-1 truncate text-sm text-[#71717A]">
-                    {item.subtitle ?? "My tasks"}
-                  </p>
-                </div>
-                <div className="pt-0.5 text-right text-xs font-medium whitespace-nowrap text-[#71717A]">
-                  {item.dueAt ? format(new Date(item.dueAt), "MMM d") : "Mine"}
-                </div>
+                <Circle className="size-4 shrink-0 text-[#C2C5CB]" strokeWidth={1.75} />
+                <p className="line-clamp-1 text-[13px] font-medium text-[#18181B]">
+                  {item.title}
+                </p>
+                <span className="shrink-0 text-[11px] whitespace-nowrap text-[#71717A]">
+                  {item.occurredAt ? format(new Date(item.occurredAt), "MMM d") : ""}
+                </span>
               </div>
             ))}
           </div>
