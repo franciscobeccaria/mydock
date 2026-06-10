@@ -2,6 +2,8 @@ import { decryptSecret, encryptSecret } from "@/lib/crypto";
 import { createServiceRoleClient } from "@/lib/supabase/service";
 import { env } from "@/lib/env";
 
+import { getLinearTokenExpiry } from "./tokens";
+
 type LinearTokenRow = {
   id: string;
   access_token_encrypted: string | null;
@@ -14,12 +16,6 @@ type RefreshedLinearToken = {
   refreshToken: string | null;
   expiresAt: string | null;
 };
-
-function getLinearTokenExpiry(expiresIn: number | null | undefined) {
-  return expiresIn
-    ? new Date(Date.now() + expiresIn * 1000).toISOString()
-    : null;
-}
 
 async function getLinearIntegration(userId: string) {
   const serviceClient = createServiceRoleClient();

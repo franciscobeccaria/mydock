@@ -1,6 +1,8 @@
 import { encryptSecret } from "@/lib/crypto";
 import { createServiceRoleClient } from "@/lib/supabase/service";
 
+import { getLinearTokenExpiry } from "./tokens";
+
 type LinearTokenExchange = {
   access_token?: string;
   refresh_token?: string;
@@ -13,12 +15,6 @@ type LinearViewer = {
   email?: string;
   name?: string;
 };
-
-function getLinearTokenExpiry(expiresIn: number | null | undefined) {
-  return expiresIn
-    ? new Date(Date.now() + expiresIn * 1000).toISOString()
-    : null;
-}
 
 export async function exchangeLinearCodeForToken({
   code,

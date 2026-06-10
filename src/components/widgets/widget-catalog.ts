@@ -46,13 +46,6 @@ const APP_LABELS: Record<AppId, string> = {
   google_tasks: "Google Tasks",
 };
 
-const APP_PROVIDER: Record<AppId, Provider> = {
-  linear: "linear",
-  gmail: "gmail",
-  google_calendar: "google_calendar",
-  google_tasks: "google_tasks",
-};
-
 // Single source of truth for addable widgets. Do NOT import the server-side
 // registry here — this module is consumed by client components.
 export const WIDGET_CATALOG: readonly WidgetCatalogEntry[] = [
@@ -127,7 +120,8 @@ export const APP_GROUPS: AppGroup[] = (() => {
       group = {
         id: widget.appId,
         label: APP_LABELS[widget.appId],
-        provider: APP_PROVIDER[widget.appId],
+        // All widgets in a group share the same backing provider.
+        provider: widget.provider,
         widgets: [],
       };
       groups.set(widget.appId, group);
