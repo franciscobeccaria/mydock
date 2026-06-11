@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, Lock } from "lucide-react";
 import useEmblaCarousel from "embla-carousel-react";
 import { useQuery } from "@tanstack/react-query";
 
@@ -65,19 +65,34 @@ const VISIBLE_PER_PAGE = 3;
 const CARD_WIDTH = "w-[calc((100%-1.5rem)/3)]";
 const CARD_HEIGHT = "h-[150px]";
 
+// When the catalog is small we show disconnected providers' widgets disabled with
+// a connect CTA. Flip to true to hide them once there are many widgets.
+const LOCKED_WIDGETS_HIDDEN = false;
+
+// Where a locked group's "Connect" CTA deep-links. Linear has no OAuth start route
+// (per-user pasted key), so it points at /connections; Google apps kick off OAuth.
+function connectPathForProvider(provider: WidgetCatalogEntry["provider"]): string {
+  return provider === "linear"
+    ? "/connections"
+    : "/api/integrations/google/start?next=/connections";
+}
+
 export function WidgetCatalogDialog({
   open,
   onOpenChange,
   accounts,
   addedByApp,
+  connectedByProvider,
   onAdd,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** Connectable accounts; today just the single login account. */
+  /** Connectable accounts; the login account plus any extra connections. */
   accounts: WidgetAccount[];
   /** Instances already on the dashboard, keyed by appId, for the "N added" badge. */
   addedByApp: Record<string, number>;
+  /** Whether each app group's backing provider is connected; locks the rest. */
+  connectedByProvider: Record<string, boolean>;
   onAdd: (slotId: SlotId, accountId: string | null) => void;
 }) {
   // The widget chosen for the preview step; null while browsing the list.
@@ -115,7 +130,11 @@ export function WidgetCatalogDialog({
             onAdd={commit}
           />
         ) : (
-          <ListStep addedByApp={addedByApp} onSelect={setSelected} />
+          <ListStep
+            addedByApp={addedByApp}
+            connectedByProvider={connectedByProvider}
+            onSelect={setSelected}
+          />
         )}
       </DialogContent>
     </Dialog>
@@ -126,9 +145,11 @@ export function WidgetCatalogDialog({
 
 function ListStep({
   addedByApp,
+  connectedByProvider,
   onSelect,
 }: {
   addedByApp: Record<string, number>;
+  connectedByProvider: Record<string, boolean>;
   onSelect: (slotId: SlotId) => void;
 }) {
   return (
@@ -143,14 +164,20 @@ function ListStep({
 
       <ScrollArea className="max-h-[60vh]">
         <div className="flex flex-col gap-8 px-6 py-5">
-          {APP_GROUPS.map((group) => (
-            <AppSection
-              key={group.id}
-              group={group}
-              added={addedByApp[group.id] ?? 0}
-              onSelect={onSelect}
-            />
-          ))}
+          {APP_GROUPS.map((group) => {
+            const connected = connectedByProvider[group.provider] ?? false;
+            // Hide disconnected groups entirely when the flag is on.
+            if (!connected && LOCKED_WIDGETS_HIDDEN) return null;
+            return (
+              <AppSection
+                key={group.id}
+                group={group}
+                added={addedByApp[group.id] ?? 0}
+                connected={connected}
+                onSelect={onSelect}
+              />
+            );
+          })}
         </div>
       </ScrollArea>
     </>
@@ -160,10 +187,12 @@ function ListStep({
 function AppSection({
   group,
   added,
+  connected,
   onSelect,
 }: {
   group: AppGroup;
   added: number;
+  connected: boolean;
   onSelect: (slotId: SlotId) => void;
 }) {
   const widgets = group.widgets;
@@ -186,7 +215,14 @@ function AppSection({
         ) : null}
       </div>
 
-      {usesCarousel ? (
+      {!connected ? (
+        // Disconnected provider: every widget is locked behind a connect CTA.
+        <div className="-mx-1 flex flex-wrap gap-3 px-1">
+          {widgets.map((widget, i) => (
+            <LockedWidgetCard key={i} widget={widget} label={group.label} />
+          ))}
+        </div>
+      ) : usesCarousel ? (
         <WidgetCarousel widgets={widgets} onSelect={onSelect} />
       ) : (
         // -mx-1 + px-1 give cards 4px breathing room (so hover borders/shadows
@@ -198,6 +234,40 @@ function AppSection({
         </div>
       )}
     </section>
+  );
+}
+
+/**
+ * A locked widget card: same footprint as WidgetCardOption but greyed and not
+ * addable. Its CTA deep-links to the provider's connect flow (/connections for
+ * Linear, Google OAuth start for Google apps). Ported from the connections preview.
+ */
+function LockedWidgetCard({
+  widget,
+  label,
+}: {
+  widget: WidgetCatalogEntry;
+  label: string;
+}) {
+  return (
+    <div
+      className={cn(
+        "flex shrink-0 flex-col items-center justify-center gap-1.5 rounded-2xl border border-dashed border-[#E7E7EA] bg-[#FAFAFA] p-4 text-center",
+        CARD_WIDTH,
+        CARD_HEIGHT,
+      )}
+    >
+      <div className="flex size-7 items-center justify-center rounded-lg bg-white">
+        <Lock className="size-3.5 text-[#A1A1AA]" />
+      </div>
+      <p className="text-sm font-semibold text-[#A1A1AA]">{widget.label}</p>
+      <a
+        href={connectPathForProvider(widget.provider)}
+        className="mt-1 rounded-full bg-[#18181B] px-3 py-1.5 text-xs font-medium text-white transition-opacity hover:opacity-90"
+      >
+        Connect {label} →
+      </a>
+    </div>
   );
 }
 

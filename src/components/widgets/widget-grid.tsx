@@ -40,6 +40,7 @@ import {
   widgetStaleTime,
 } from "@/components/widgets/widget-render";
 import { cn } from "@/lib/utils";
+import { type ConnectionsByProvider } from "@/features/connections/queries";
 import { type WidgetPayload } from "@/features/integrations/types";
 
 const INTERACTIVE =
@@ -218,16 +219,19 @@ function WidgetGrid({
   accountEmail,
   accountName,
   accountAvatarUrl,
+  connections,
 }: {
   accountEmail: string | null;
   accountName: string | null;
   accountAvatarUrl: string | null;
+  connections: ConnectionsByProvider;
 }) {
   const router = useRouter();
   const { isEditing } = useDashboardMode();
 
-  // Until FRA-138's multi-account connect flow lands, the only account is the
-  // login account, recorded as the default (accountId `null`).
+  // The login account is the default (accountId `null`, sentinel "__default__"),
+  // followed by every other real connection (non-default google + all linear).
+  // Real connections carry their own id so per-account widget queries key apart.
   const accounts: WidgetAccount[] = [
     {
       id: null,
@@ -235,7 +239,31 @@ function WidgetGrid({
       name: accountName ?? accountEmail,
       avatarUrl: accountAvatarUrl,
     },
+    ...connections.google
+      .filter((c) => !c.isDefault)
+      .map((c) => ({
+        id: c.id,
+        label: c.email ?? "Google account",
+        name: c.email,
+        avatarUrl: null,
+      })),
+    ...connections.linear.map((c) => ({
+      id: c.id,
+      label: c.email ?? "Linear account",
+      name: c.email,
+      avatarUrl: null,
+    })),
   ];
+
+  // Which catalog app groups have a backing connection. Google-derived apps
+  // (gmail / tasks / calendar) share the single google connection list; linear
+  // maps to the linear list.
+  const connectedByProvider: Record<string, boolean> = {
+    linear: connections.linear.length > 0,
+    gmail: connections.google.length > 0,
+    google_tasks: connections.google.length > 0,
+    google_calendar: connections.google.length > 0,
+  };
 
   // Active instances, order, add/remove/config all live in the layout hook, now
   // backed by per-user Supabase state (with a localStorage cache).
@@ -351,6 +379,7 @@ function WidgetGrid({
         onOpenChange={setCatalogOpen}
         accounts={accounts}
         addedByApp={addedByApp}
+        connectedByProvider={connectedByProvider}
         onAdd={addWidget}
       />
     </>
@@ -366,11 +395,13 @@ export default function WidgetGridWithState({
   accountName,
   accountAvatarUrl,
   userId,
+  connections,
 }: {
   accountEmail: string | null;
   accountName: string | null;
   accountAvatarUrl: string | null;
   userId: string | null;
+  connections: ConnectionsByProvider;
 }) {
   return (
     <DashboardStateProvider userId={userId}>
@@ -378,6 +409,7 @@ export default function WidgetGridWithState({
         accountEmail={accountEmail}
         accountName={accountName}
         accountAvatarUrl={accountAvatarUrl}
+        connections={connections}
       />
     </DashboardStateProvider>
   );
