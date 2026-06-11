@@ -439,9 +439,15 @@ function WidgetGrid({ accountEmail }: { accountEmail: string | null }) {
  * Wraps the grid in the single dashboard-state store so the grid's widgets and
  * the shortcuts row share one source of truth (no cross-slice clobber).
  */
-export default function WidgetGridWithState({ accountEmail }: { accountEmail: string | null }) {
+export default function WidgetGridWithState({
+  accountEmail,
+  userId,
+}: {
+  accountEmail: string | null;
+  userId: string | null;
+}) {
   return (
-    <DashboardStateProvider>
+    <DashboardStateProvider userId={userId}>
       <WidgetGrid accountEmail={accountEmail} />
     </DashboardStateProvider>
   );

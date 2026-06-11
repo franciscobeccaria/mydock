@@ -14,7 +14,7 @@ export default async function DashboardPage() {
 
   return (
     <PageContainer>
-      <WidgetGridClient accountEmail={user?.email ?? null} />
+      <WidgetGridClient accountEmail={user?.email ?? null} userId={user?.id ?? null} />
     </PageContainer>
   );
 }

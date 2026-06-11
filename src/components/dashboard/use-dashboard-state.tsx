@@ -21,9 +21,15 @@ import {
 } from "@/components/dashboard/widget-instance";
 import { DEFAULT_LAYOUT, isSlotId, type SlotId } from "@/components/widgets/widget-catalog";
 
-const LAYOUT_KEY = "mydock:dashboard:v2";
+// Cache keys are scoped per user so a shared browser (sign out → sign in as a
+// different account) never seeds the new user's server row from the previous
+// user's cached layout. The unscoped legacy keys below are read once and migrated
+// into the current user's scoped keys.
+const LAYOUT_KEY = (userId: string) => `mydock:dashboard:v2:${userId}`;
+const SHORTCUTS_KEY = (userId: string) => `mydock:shortcuts:v1:${userId}`;
+const LEGACY_LAYOUT_KEY = "mydock:dashboard:v2";
+const LEGACY_SHORTCUTS_KEY = "mydock:shortcuts:v1";
 const LAYOUT_V1_KEY = "mydock:widget-order:v1";
-const SHORTCUTS_KEY = "mydock:shortcuts:v1";
 const WIDGET_PREF_PREFIX = "mydock:widget-pref:";
 const SAVE_DEBOUNCE_MS = 500;
 
@@ -42,19 +48,22 @@ type DashboardState = {
  * reading that shape and convert to instances. A value already in instance shape
  * (written by this hook as the cache) is parsed back to instances directly.
  */
-function readCachedState(): DashboardStatePayload {
-  if (typeof window === "undefined") {
+function readCachedState(userId: string | null): DashboardStatePayload {
+  if (typeof window === "undefined" || !userId) {
     return { layout: defaultInstances(), shortcuts: [] };
   }
 
-  const layout = readCachedLayout();
-  const shortcuts = readCachedShortcuts();
+  const layout = readCachedLayout(userId);
+  const shortcuts = readCachedShortcuts(userId);
   return { layout, shortcuts };
 }
 
-function readCachedLayout(): WidgetInstance[] {
+function readCachedLayout(userId: string): WidgetInstance[] {
   try {
-    const raw = window.localStorage.getItem(LAYOUT_KEY);
+    // Prefer the user-scoped cache; fall back to the unscoped legacy key once.
+    const raw =
+      window.localStorage.getItem(LAYOUT_KEY(userId)) ??
+      window.localStorage.getItem(LEGACY_LAYOUT_KEY);
     if (!raw) return slotIdsToInstances(readLegacySlotIds(), readWidgetPrefs());
 
     const parsed = JSON.parse(raw) as unknown;
@@ -116,9 +125,11 @@ function readWidgetPrefs(): Record<string, string> {
   return prefs;
 }
 
-function readCachedShortcuts(): Shortcut[] {
+function readCachedShortcuts(userId: string): Shortcut[] {
   try {
-    const raw = window.localStorage.getItem(SHORTCUTS_KEY);
+    const raw =
+      window.localStorage.getItem(SHORTCUTS_KEY(userId)) ??
+      window.localStorage.getItem(LEGACY_SHORTCUTS_KEY);
     if (!raw) return [];
     const result = dashboardStateSchema.safeParse({ layout: [], shortcuts: JSON.parse(raw) });
     return result.success ? result.data.shortcuts : [];
@@ -127,11 +138,11 @@ function readCachedShortcuts(): Shortcut[] {
   }
 }
 
-function writeCache(state: DashboardStatePayload): void {
-  if (typeof window === "undefined") return;
+function writeCache(userId: string | null, state: DashboardStatePayload): void {
+  if (typeof window === "undefined" || !userId) return;
   try {
-    window.localStorage.setItem(LAYOUT_KEY, JSON.stringify(state.layout));
-    window.localStorage.setItem(SHORTCUTS_KEY, JSON.stringify(state.shortcuts));
+    window.localStorage.setItem(LAYOUT_KEY(userId), JSON.stringify(state.layout));
+    window.localStorage.setItem(SHORTCUTS_KEY(userId), JSON.stringify(state.shortcuts));
   } catch {
     // Storage may be unavailable (private mode); state still works in-session.
   }
@@ -176,10 +187,10 @@ async function putServerState(state: DashboardStatePayload): Promise<void> {
  *   localStorage as a fast cache, and fire a debounced PUT. A failed PUT keeps the
  *   in-session state working (last-write-wins on the next success).
  */
-function useDashboardStateStore(): DashboardState {
+function useDashboardStateStore(userId: string | null): DashboardState {
   // The grid is client-only (ssr: false), so reading localStorage in the lazy
   // initializer is safe and gives an instant first paint from cache.
-  const [state, setState] = useState<DashboardStatePayload>(() => readCachedState());
+  const [state, setState] = useState<DashboardStatePayload>(() => readCachedState(userId));
 
   const query = useQuery({
     queryKey: ["dashboard-state"],
@@ -215,7 +226,7 @@ function useDashboardStateStore(): DashboardState {
     if (!query.isSuccess || reconciledRef.current) return;
     reconciledRef.current = true;
     if (query.data) {
-      writeCache(query.data);
+      writeCache(userId, query.data);
       // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time reconcile of server data into state
       setState(query.data);
     } else {
@@ -224,19 +235,19 @@ function useDashboardStateStore(): DashboardState {
         return current;
       });
     }
-  }, [query.isSuccess, query.data]);
+  }, [query.isSuccess, query.data, userId]);
 
   const setLayout = useCallback<DashboardState["setLayout"]>(
     (next) => {
       setState((current) => {
         const layout = typeof next === "function" ? next(current.layout) : next;
         const updated = { ...current, layout };
-        writeCache(updated);
+        writeCache(userId, updated);
         scheduleSave(updated);
         return updated;
       });
     },
-    [scheduleSave],
+    [scheduleSave, userId],
   );
 
   const setShortcuts = useCallback<DashboardState["setShortcuts"]>(
@@ -244,12 +255,12 @@ function useDashboardStateStore(): DashboardState {
       setState((current) => {
         const shortcuts = typeof next === "function" ? next(current.shortcuts) : next;
         const updated = { ...current, shortcuts };
-        writeCache(updated);
+        writeCache(userId, updated);
         scheduleSave(updated);
         return updated;
       });
     },
-    [scheduleSave],
+    [scheduleSave, userId],
   );
 
   return useMemo(
@@ -271,8 +282,14 @@ const DashboardStateContext = createContext<DashboardState | null>(null);
  * top of the dashboard (inside the client-only grid). All consumers
  * (`useDashboardLayout`, `useShortcuts`) share this one store.
  */
-export function DashboardStateProvider({ children }: { children: React.ReactNode }) {
-  const value = useDashboardStateStore();
+export function DashboardStateProvider({
+  userId,
+  children,
+}: {
+  userId: string | null;
+  children: React.ReactNode;
+}) {
+  const value = useDashboardStateStore(userId);
   return <DashboardStateContext.Provider value={value}>{children}</DashboardStateContext.Provider>;
 }
 
