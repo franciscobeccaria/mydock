@@ -24,6 +24,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ProviderIcon } from "@/components/widgets/provider-icon";
+import { CONNECT_PATH } from "@/features/integrations/connect-paths";
 import {
   APP_GROUPS,
   CATALOG_BY_ID,
@@ -68,14 +69,6 @@ const CARD_HEIGHT = "h-[150px]";
 // When the catalog is small we show disconnected providers' widgets disabled with
 // a connect CTA. Flip to true to hide them once there are many widgets.
 const LOCKED_WIDGETS_HIDDEN = false;
-
-// Where a locked group's "Connect" CTA deep-links. Linear has no OAuth start route
-// (per-user pasted key), so it points at /connections; Google apps kick off OAuth.
-function connectPathForProvider(provider: WidgetCatalogEntry["provider"]): string {
-  return provider === "linear"
-    ? "/connections"
-    : "/api/integrations/google/start?next=/connections";
-}
 
 export function WidgetCatalogDialog({
   open,
@@ -262,7 +255,7 @@ function LockedWidgetCard({
       </div>
       <p className="text-sm font-semibold text-[#A1A1AA]">{widget.label}</p>
       <a
-        href={connectPathForProvider(widget.provider)}
+        href={CONNECT_PATH[widget.provider]}
         className="mt-1 rounded-full bg-[#18181B] px-3 py-1.5 text-xs font-medium text-white transition-opacity hover:opacity-90"
       >
         Connect {label} →

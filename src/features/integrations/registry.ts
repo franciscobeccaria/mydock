@@ -5,6 +5,7 @@ import { getGoogleTaskItems } from "@/features/integrations/providers/google/tas
 import { getLinearItems } from "@/features/integrations/providers/linear/adapter";
 import { linearScopes } from "@/features/integrations/providers/linear/types";
 import { buildTodaySummary } from "@/features/widgets/summary";
+import { CONNECT_PATH } from "@/features/integrations/connect-paths";
 import { isSupabaseConfigured } from "@/lib/env";
 import { createClient } from "@/lib/supabase/server";
 
@@ -22,25 +23,25 @@ const providerMeta = {
     label: "Linear",
     description: "Follow your assigned issues and the work that needs attention.",
     requiredScopes: [...linearScopes],
-    connectPath: "/connections",
+    connectPath: CONNECT_PATH.linear,
   },
   gmail: {
     label: "Gmail",
     description: "See the messages that matter most without leaving your dashboard.",
     requiredScopes: getRequiredGoogleScopes("gmail"),
-    connectPath: "/api/integrations/google/start?next=/connections",
+    connectPath: CONNECT_PATH.gmail,
   },
   google_tasks: {
     label: "Google Tasks",
     description: "Keep your top tasks in view while you work.",
     requiredScopes: getRequiredGoogleScopes("google_tasks"),
-    connectPath: "/api/integrations/google/start?next=/connections",
+    connectPath: CONNECT_PATH.google_tasks,
   },
   google_calendar: {
     label: "Google Calendar",
     description: "Track the next events shaping your day.",
     requiredScopes: getRequiredGoogleScopes("google_calendar"),
-    connectPath: "/api/integrations/google/start?next=/connections",
+    connectPath: CONNECT_PATH.google_calendar,
   },
 } satisfies Record<
   Provider,
