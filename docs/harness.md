@@ -63,6 +63,8 @@ pnpm lint && pnpm typecheck && pnpm build
 
 Engram memory · Context7 · shadcn MCP · `gh` CLI · Linear · Vercel CLI · agent-browser.
 
+These are not just available — stage 0 *uses* them unprompted: Linear MCP fetches the ticket, engram (`mem_search`, project `mydock`) recalls prior work, `gh` pulls recent PRs/commits for the touched surfaces, and related specs in `docs/specs/` get read. Prompts never need to name these tools; naming a tool is reserved for exceptions outside the routine set.
+
 ## Iteration rule
 
 When a stage of this harness causes friction or gets skipped repeatedly on real tickets, change **this file** — and if the lesson generalizes, push it upstream to harness-library.

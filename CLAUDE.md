@@ -6,6 +6,11 @@ This project runs on the harness defined in `docs/harness.md` — read it before
 
 The short version:
 
+- **Starting a ticket → gather context first, without being asked**:
+  1. Fetch the issue via Linear MCP (FRA-xxx) — description, relations, attachments/design status.
+  2. Search engram (`mem_search`, project `mydock`) for prior work and decisions on the area.
+  3. `gh` CLI: recent merged PRs and commit history touching the relevant surfaces.
+  4. Read any related specs in `docs/specs/`.
 - **Meaningful change → one spec first**: copy `docs/specs/_template.md` to `docs/specs/YYYY-MM-DD-fra-xxx-<slug>.md` and fill it. Trivial fixes don't need one.
 - **Route by design status first**: design exists → build to it; not needed (backend/logic) → straight to spec; needed but missing → create it as a workflow stage with `/idea-to-feature` (lanes: in-app mock, ASCII, image gen) before writing the spec. See "Design routing" in `docs/harness.md`.
 - **Migrations/upgrades** (Next.js/React majors, Supabase breaking changes): research first, use the migration-plan template linked from `docs/harness.md`.
