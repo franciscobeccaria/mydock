@@ -17,7 +17,8 @@ MyDock's instantiation of the shared journey from [harness-library](https://gith
 | 4. Planning | light | plan lives inside the spec |
 | 5. Build | normal | feature branch named after the ticket, conventional commits with `(FRA-xxx)` |
 | 6. Verification | **strong** | see Verification stack |
-| 7. PR | normal | PR description mirrors the spec (`.github/pull_request_template.md`) |
+| 6b. Manual QA checkpoint | UI-visible changes | agent prepares the handoff (running app, authed session, what-to-check list) and STOPS; Francisco's "go" releases the PR — TD Bank checkpoint pattern, agent-browser-assisted |
+| 7. PR | normal | PR description mirrors the spec (`.github/pull_request_template.md`); commits via `/commit-message`, no AI attribution |
 | 8. Post-PR | light | CI green + self-review; no corporate review loops |
 
 ## Design routing
@@ -50,7 +51,7 @@ pnpm lint && pnpm typecheck && pnpm build
 - **agent-browser** is the default for verifying changes in the real authed app. Auth recipe (Supabase session mint + cookie injection, base-ui Select gotcha): [harness-library catalog → Recipes](https://github.com/franciscobeccaria/harness-library/blob/master/catalog/README.md#recipes--harness-how-tos-worth-keeping).
 - **Chrome DevTools MCP** for interactive debugging only.
 - Supabase changes: verify against local stack (`pnpm supabase:start` / `supabase:reset`); regenerate types with `pnpm supabase:types`.
-- Manual QA: only for visual/UX-sensitive changes — not a mandatory checkpoint.
+- Manual QA checkpoint: default for UI-visible changes, skippable for backend/logic-only work. The agent never runs automated browser QA unprompted — agent-browser gathers evidence and preps the authed session, then the agent stops and waits for Francisco's manual pass and "go" before the PR.
 
 ## Guardrails (medium)
 
@@ -64,6 +65,8 @@ pnpm lint && pnpm typecheck && pnpm build
 Engram memory · Context7 · shadcn MCP · `gh` CLI · Linear · Vercel CLI · agent-browser.
 
 These are not just available — stage 0 *uses* them unprompted: Linear MCP fetches the ticket, engram (`mem_search`, project `mydock`) recalls prior work, `gh` pulls recent PRs/commits for the touched surfaces, and related specs in `docs/specs/` get read. Prompts never need to name these tools; naming a tool is reserved for exceptions outside the routine set.
+
+Harness-owned skills/commands are **vendored in `.claude/`** (`skills/idea-to-feature/`, `commands/commit-message.md`) — the repo is the harness's single source. Never depend on machine-local `~/.claude` for harness behavior; if the harness references a component, copy it into the repo.
 
 ## Iteration rule
 
