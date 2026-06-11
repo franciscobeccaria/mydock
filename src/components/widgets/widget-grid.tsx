@@ -32,7 +32,7 @@ import { CalendarUpcomingWeekWidget } from "@/components/widgets/calendar-upcomi
 import { GmailWidget } from "@/components/widgets/gmail-widget";
 import { GoogleTasksWidget } from "@/components/widgets/google-tasks-widget";
 import { deriveLinearAssignedUrl, LinearWidget } from "@/components/widgets/linear-widget";
-import { WidgetCatalogDialog } from "@/components/widgets/widget-catalog-dialog";
+import { WidgetCatalogDialog, type WidgetAccount } from "@/components/widgets/widget-catalog-dialog";
 import { CATALOG_BY_ID, type SlotId } from "@/components/widgets/widget-catalog";
 import { cn } from "@/lib/utils";
 import { type Provider, type WidgetPayload } from "@/features/integrations/types";
@@ -310,13 +310,17 @@ function InstanceWidget({
   }
 }
 
-export default function WidgetGrid() {
+export default function WidgetGrid({ accountEmail }: { accountEmail: string | null }) {
   const router = useRouter();
   const { isEditing } = useDashboardMode();
 
+  // Until FRA-138's multi-account connect flow lands, the only account is the
+  // login account, recorded as the default (accountId `null`).
+  const accounts: WidgetAccount[] = [{ id: null, label: accountEmail ?? "Default account" }];
+
   // Active instances, order, add/remove/config all live in the layout hook, now
   // backed by per-user Supabase state (with a localStorage cache).
-  const { layout, isActive, addWidget, removeWidget, reorder, updateConfig } = useDashboardLayout();
+  const { layout, addWidget, removeWidget, reorder, updateConfig } = useDashboardLayout();
   const [catalogOpen, setCatalogOpen] = useState(false);
 
   // Linear's catalog destination is the generic https://linear.app/; when issues
@@ -418,7 +422,7 @@ export default function WidgetGrid() {
       <WidgetCatalogDialog
         open={catalogOpen}
         onOpenChange={setCatalogOpen}
-        isActive={isActive}
+        accounts={accounts}
         onAdd={addWidget}
       />
     </>
