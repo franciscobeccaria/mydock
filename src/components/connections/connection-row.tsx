@@ -37,13 +37,17 @@ export function ConnectionRow({ connection }: { connection: ConnectionRecord }) 
     }
   }
 
+  // Only the Google login account is non-removable (it's the user's identity).
+  // Linear connections are always removable, even the provider's default one.
+  const nonRemovable = connection.provider === "google" && connection.isDefault;
+
   function setDefault() {
     if (connection.isDefault) return;
     void mutate("PATCH");
   }
 
   function disconnect() {
-    if (connection.isDefault) return;
+    if (nonRemovable) return;
     void mutate("DELETE");
   }
 
@@ -73,7 +77,7 @@ export function ConnectionRow({ connection }: { connection: ConnectionRecord }) 
           </span>
           {connection.isDefault ? (
             <span className="rounded-full bg-[#F4F4F5] px-2 py-0.5 text-[11px] font-medium text-[#52525B]">
-              Default · Login
+              {connection.provider === "google" ? "Default · Login" : "Default"}
             </span>
           ) : null}
         </div>
@@ -87,7 +91,7 @@ export function ConnectionRow({ connection }: { connection: ConnectionRecord }) 
         </span>
         <DropdownMenu>
           <DropdownMenuTrigger
-            className="flex size-8 items-center justify-center rounded-full text-[#71717A] transition-colors hover:bg-[#F4F4F5] hover:text-[#18181B]"
+            className="flex size-8 cursor-pointer items-center justify-center rounded-full text-[#71717A] transition-colors hover:bg-[#F4F4F5] hover:text-[#18181B]"
             aria-label="Connection options"
           >
             <MoreHorizontal className="size-4" />
@@ -103,10 +107,10 @@ export function ConnectionRow({ connection }: { connection: ConnectionRecord }) 
             ) : null}
             <DropdownMenuItem
               onClick={disconnect}
-              disabled={connection.isDefault || busy}
-              className={connection.isDefault ? "" : "text-[#DC2626]"}
+              disabled={nonRemovable || busy}
+              className={nonRemovable ? "" : "text-[#DC2626]"}
             >
-              {connection.isDefault ? "Can't remove default" : "Disconnect"}
+              {nonRemovable ? "Can't remove login account" : "Disconnect"}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

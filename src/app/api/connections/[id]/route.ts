@@ -20,13 +20,15 @@ export async function DELETE(_req: NextRequest, ctx: { params: Promise<{ id: str
 
   const row = await service
     .from("integration_accounts")
-    .select("id,is_default")
+    .select("id,provider,is_default")
     .eq("user_id", userId)
     .eq("id", id)
     .maybeSingle();
 
   if (row.error || !row.data) return NextResponse.json({ error: "not_found" }, { status: 404 });
-  if (row.data.is_default)
+  // Only the Google login account is non-removable (it's the user's identity).
+  // Linear connections are always removable, even the provider's default one.
+  if (row.data.provider === "google" && row.data.is_default)
     return NextResponse.json({ error: "default_not_removable" }, { status: 409 });
 
   const del = await service.from("integration_accounts").delete().eq("user_id", userId).eq("id", id);

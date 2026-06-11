@@ -88,7 +88,7 @@ function ProviderGroup({
           type="button"
           onClick={onAdd}
           disabled={Boolean(addDisabledHint)}
-          className="flex items-center gap-2 rounded-full border border-dashed border-[#D4D4D8] px-4 py-2 text-sm font-medium text-[#52525B] transition-colors hover:border-[#18181B] hover:text-[#18181B] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-[#D4D4D8] disabled:hover:text-[#52525B]"
+          className="flex cursor-pointer items-center gap-2 rounded-full border border-dashed border-[#D4D4D8] px-4 py-2 text-sm font-medium text-[#52525B] transition-colors hover:border-[#18181B] hover:text-[#18181B] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-[#D4D4D8] disabled:hover:text-[#52525B]"
         >
           <Plus className="size-4" />
           {addLabel}

@@ -126,7 +126,7 @@ export function LinearConnectDialog({
             <button
               type="button"
               onClick={() => setReveal((r) => !r)}
-              className="absolute top-1/2 right-3 -translate-y-1/2 text-[#A1A1AA] hover:text-[#52525B]"
+              className="absolute top-1/2 right-3 -translate-y-1/2 cursor-pointer text-[#A1A1AA] hover:text-[#52525B]"
               aria-label={reveal ? "Hide key" : "Show key"}
             >
               {reveal ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
