@@ -9,8 +9,8 @@ const GOOGLE_ACCESS_COOKIE = "mydock_google_access_token";
 const GOOGLE_REFRESH_COOKIE = "mydock_google_refresh_token";
 
 function getSafeNext(request: NextRequest) {
-  const next = request.nextUrl.searchParams.get("next") ?? "/dashboard";
-  return next.startsWith("/") ? next : "/dashboard";
+  const next = request.nextUrl.searchParams.get("next") ?? "/";
+  return next.startsWith("/") ? next : "/";
 }
 
 function isGoogleSessionProvider(

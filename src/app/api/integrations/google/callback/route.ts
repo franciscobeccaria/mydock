@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 export async function GET(request: NextRequest) {
-  return NextResponse.redirect(new URL("/settings/integrations?notice=google-unavailable", request.url));
+  return NextResponse.redirect(new URL("/connections?notice=google-unavailable", request.url));
 }

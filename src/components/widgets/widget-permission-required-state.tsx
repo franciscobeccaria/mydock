@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 
 export function WidgetPermissionRequiredState({
   providerLabel,
-  actionHref = "/api/integrations/google/start?next=/dashboard",
+  actionHref = "/api/integrations/google/start?next=/",
   actionLabel = "Review access",
 }: {
   providerLabel: string;

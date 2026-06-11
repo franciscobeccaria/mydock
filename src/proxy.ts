@@ -7,7 +7,9 @@ import type { Database } from "@/types/supabase";
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  if (!pathname.startsWith("/dashboard") && !pathname.startsWith("/settings")) {
+  // Public paths that must never be auth-gated. Everything else is protected
+  // by default (the matcher below also excludes static assets / API / auth).
+  if (pathname === "/login" || pathname.startsWith("/auth")) {
     return NextResponse.next();
   }
 
@@ -45,5 +47,8 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/dashboard/:path*", "/settings/:path*"],
+  // Protect by default: run on every path except API routes, static assets,
+  // and metadata files. Public auth paths (/login, /auth/*) are let through
+  // inside the proxy function above.
+  matcher: ["/((?!api|_next/static|_next/image|favicon.ico|sitemap.xml|robots.txt).*)"],
 };

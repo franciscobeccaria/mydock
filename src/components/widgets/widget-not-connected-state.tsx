@@ -6,8 +6,8 @@ import { cn } from "@/lib/utils";
 
 export function WidgetNotConnectedState({
   providerLabel,
-  actionHref = "/settings/integrations",
-  actionLabel = "Open integrations",
+  actionHref = "/connections",
+  actionLabel = "Open connections",
 }: {
   providerLabel: string;
   actionHref?: string;

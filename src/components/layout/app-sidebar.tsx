@@ -21,10 +21,9 @@ import {
 import { NavUser } from "@/components/layout/nav-user";
 import { EditDashboardToggle } from "@/components/dashboard/edit-dashboard-toggle";
 
-// Top-level navigation. NOTE: Dashboard points at /dashboard (the current
-// route); FRA-143 moves the dashboard to / and updates this href.
+// Top-level navigation. Dashboard is the root route (/).
 const NAV_ITEMS = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutGrid },
+  { href: "/", label: "Dashboard", icon: LayoutGrid },
   { href: "/connections", label: "Connections", icon: Plug },
 ] as const;
 
@@ -38,7 +37,7 @@ interface AppSidebarProps {
 
 export function AppSidebar({ user }: AppSidebarProps) {
   const pathname = usePathname();
-  const onDashboard = pathname === "/dashboard";
+  const onDashboard = pathname === "/";
 
   return (
     <Sidebar collapsible="icon">
@@ -46,7 +45,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
         <div className="flex items-center justify-between gap-2 px-1 py-1 group-data-[collapsible=icon]:justify-center">
           {/* Expanded: logo + trigger */}
           <Link
-            href="/dashboard"
+            href="/"
             className="flex items-center gap-2 overflow-hidden group-data-[collapsible=icon]:hidden"
           >
             <div className="flex size-7 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground text-xs font-bold">
