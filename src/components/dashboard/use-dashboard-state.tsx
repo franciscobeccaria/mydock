@@ -1,7 +1,15 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import {
   dashboardStateSchema,
@@ -105,13 +113,22 @@ function writeCache(state: DashboardStatePayload): void {
   }
 }
 
+/**
+ * Loads the server row. Returns `null` ONLY for a true "no row yet" (fresh user),
+ * which is the signal to seed. A read failure or an unparseable/legacy payload
+ * throws instead — we must not treat those as "no row", or the reconcile would
+ * overwrite a real (if unreadable) server record with cached state.
+ */
 async function fetchServerState(): Promise<DashboardStatePayload | null> {
   const response = await fetch("/api/dashboard-state", { cache: "no-store" });
   if (!response.ok) throw new Error("Failed to load dashboard state.");
   const json = (await response.json()) as unknown;
   if (json === null) return null;
   const result = dashboardStateSchema.safeParse(json);
-  return result.success ? result.data : null;
+  if (!result.success) {
+    throw new Error("Server dashboard state failed validation.");
+  }
+  return result.data;
 }
 
 async function putServerState(state: DashboardStatePayload): Promise<void> {
@@ -123,7 +140,11 @@ async function putServerState(state: DashboardStatePayload): Promise<void> {
 }
 
 /**
- * Single source of truth for the dashboard's persisted state (layout + shortcuts).
+ * The store. Owns the one in-memory `{ layout, shortcuts }` snapshot, the server
+ * reconcile, and the debounced write-through. There must be exactly ONE of these
+ * per dashboard — `setLayout`/`setShortcuts` each write the *whole* payload, so two
+ * stores would clobber each other's slice. Mounted once by `DashboardStateProvider`;
+ * consumers read it through `useDashboardState()`.
  *
  * - Loads the server row on mount. If none exists, seeds it from localStorage
  *   (soft-migration of the legacy SlotId[] + widget-prefs + shortcuts) and PUTs it.
@@ -131,7 +152,7 @@ async function putServerState(state: DashboardStatePayload): Promise<void> {
  *   localStorage as a fast cache, and fire a debounced PUT. A failed PUT keeps the
  *   in-session state working (last-write-wins on the next success).
  */
-export function useDashboardState(): DashboardState {
+function useDashboardStateStore(): DashboardState {
   // The grid is client-only (ssr: false), so reading localStorage in the lazy
   // initializer is safe and gives an instant first paint from cache.
   const [state, setState] = useState<DashboardStatePayload>(() => readCachedState());
@@ -217,4 +238,25 @@ export function useDashboardState(): DashboardState {
     }),
     [state.layout, state.shortcuts, setLayout, setShortcuts, query.isLoading],
   );
+}
+
+const DashboardStateContext = createContext<DashboardState | null>(null);
+
+/**
+ * Provides the single dashboard-state store to its subtree. Mount once near the
+ * top of the dashboard (inside the client-only grid). All consumers
+ * (`useDashboardLayout`, `useShortcuts`) share this one store.
+ */
+export function DashboardStateProvider({ children }: { children: React.ReactNode }) {
+  const value = useDashboardStateStore();
+  return <DashboardStateContext.Provider value={value}>{children}</DashboardStateContext.Provider>;
+}
+
+/** Read the shared dashboard state. Must be used under `DashboardStateProvider`. */
+export function useDashboardState(): DashboardState {
+  const ctx = useContext(DashboardStateContext);
+  if (!ctx) {
+    throw new Error("useDashboardState must be used within a DashboardStateProvider");
+  }
+  return ctx;
 }

@@ -25,6 +25,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { useDashboardMode } from "@/components/dashboard/dashboard-mode-context";
 import { ShortcutsRow } from "@/components/dashboard/shortcuts-row";
 import { useDashboardLayout } from "@/components/dashboard/use-dashboard-layout";
+import { DashboardStateProvider } from "@/components/dashboard/use-dashboard-state";
 import { type WidgetInstance } from "@/components/dashboard/widget-instance";
 import { CalendarMonthGridWidget } from "@/components/widgets/calendar-month-grid-widget";
 import { CalendarTodayAgendaWidget } from "@/components/widgets/calendar-today-agenda-widget";
@@ -239,6 +240,11 @@ function InstanceWidget({
   // Gmail's view is a server-side query param; key it so All/Unread fetch apart.
   const gmailView = slotId === "gmail" ? configValue ?? "all" : undefined;
 
+  // NOTE: queries are keyed by slot + config but NOT by accountId. Today every
+  // instance binds to the single login account (accountId === null), so the data
+  // is identical regardless. When FRA-138 adds real multi-account, accountId must
+  // be threaded into both the query key and fetchWidget, or two instances on
+  // different accounts will collapse into one cache entry.
   const query = useQuery({
     queryKey:
       slotId === "gmail"
@@ -310,7 +316,7 @@ function InstanceWidget({
   }
 }
 
-export default function WidgetGrid({ accountEmail }: { accountEmail: string | null }) {
+function WidgetGrid({ accountEmail }: { accountEmail: string | null }) {
   const router = useRouter();
   const { isEditing } = useDashboardMode();
 
@@ -426,6 +432,18 @@ export default function WidgetGrid({ accountEmail }: { accountEmail: string | nu
         onAdd={addWidget}
       />
     </>
+  );
+}
+
+/**
+ * Wraps the grid in the single dashboard-state store so the grid's widgets and
+ * the shortcuts row share one source of truth (no cross-slice clobber).
+ */
+export default function WidgetGridWithState({ accountEmail }: { accountEmail: string | null }) {
+  return (
+    <DashboardStateProvider>
+      <WidgetGrid accountEmail={accountEmail} />
+    </DashboardStateProvider>
   );
 }
 

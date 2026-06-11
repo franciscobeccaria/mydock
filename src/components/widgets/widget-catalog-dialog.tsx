@@ -174,7 +174,7 @@ export function WidgetCatalogDialog({
               </div>
             </div>
             <div className="flex items-center justify-end gap-2">
-              <Button variant="ghost" size="sm" onClick={() => setSelected(null)}>
+              <Button variant="ghost" size="sm" onClick={() => handleOpenChange(false)}>
                 Cancel
               </Button>
               <Button variant="outline" size="sm" onClick={() => commit(true)}>

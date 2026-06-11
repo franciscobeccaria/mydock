@@ -121,8 +121,11 @@ Refactors:
 
 ## Confirmed mocks
 
-- `/Users/francisco.beccaria/Downloads/ChatGPT Image Jun 10, 2026, 09_34_30 PM (1).png` — Add-widget catalog, grouped by app, Calendar variants as cards + page dots.
-- `/Users/francisco.beccaria/Downloads/ChatGPT Image Jun 10, 2026, 09_34_30 PM (2).png` — Widget detail with account dropdown (Personal/Work) and Cancel / Add & choose another / Add widget.
+Confirmed during brainstorming (2026-06-10); the source images are local mockups
+not checked into the repo. Described here so the spec stands alone:
+
+- **Add-widget catalog** — grouped by app; Calendar variants shown as cards with page dots.
+- **Widget detail** — account dropdown (Personal/Work) with Cancel / Add & choose another / Add widget.
 
 ## Testing
 

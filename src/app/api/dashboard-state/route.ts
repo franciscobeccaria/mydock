@@ -18,11 +18,17 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("dashboard_state")
     .select("layout, shortcuts, version")
     .eq("user_id", user.id)
     .maybeSingle();
+
+  // Distinguish a real read failure from "no row yet": returning null on an error
+  // would make the client treat it as a fresh user and seed (overwrite) the row.
+  if (error) {
+    return NextResponse.json({ error: "Failed to load dashboard state." }, { status: 500 });
+  }
 
   return NextResponse.json(data ?? null);
 }

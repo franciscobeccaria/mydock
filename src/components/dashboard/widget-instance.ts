@@ -27,11 +27,16 @@ export const widgetInstanceSchema = z.object({
   config: z.record(z.string(), z.string()).default({}),
 });
 
+// Shortcut URLs are opened with window.open and rendered as <img> srcs, so the
+// schema rejects anything that isn't an http(s) URL (blocks javascript:/data: etc.)
+// at the PUT boundary, not just in the client.
+const httpUrl = z.string().refine((u) => /^https?:\/\//i.test(u), "must be an http(s) URL");
+
 export const shortcutSchema = z.object({
   id: z.string(),
   name: z.string(),
-  url: z.string(),
-  iconUrl: z.string().optional(),
+  url: httpUrl,
+  iconUrl: httpUrl.optional(),
 });
 
 /** A dock shortcut. `url`/`iconUrl` are normalized absolute URLs when present. */
