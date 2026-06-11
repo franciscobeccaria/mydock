@@ -34,6 +34,9 @@ export const shortcutSchema = z.object({
   iconUrl: z.string().optional(),
 });
 
+/** A dock shortcut. `url`/`iconUrl` are normalized absolute URLs when present. */
+export type Shortcut = z.infer<typeof shortcutSchema>;
+
 export const dashboardStateSchema = z.object({
   layout: z.array(widgetInstanceSchema).default([]),
   shortcuts: z.array(shortcutSchema).default([]),
