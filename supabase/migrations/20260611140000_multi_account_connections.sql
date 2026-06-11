@@ -22,6 +22,27 @@ alter table public.integration_accounts
 alter table public.integration_accounts
   add column if not exists is_default boolean not null default false;
 
+-- 4b. Backfill existing users: their Google login connection predates is_default
+--     and would otherwise stay false, leaving the non-removable login-account
+--     guard (provider='google' && is_default) ineffective until the user
+--     re-authenticates. Mark the oldest Google row per user as the default.
+--     Idempotent: only sets rows that aren't already a default for their user.
+update public.integration_accounts ia
+set is_default = true
+where ia.provider = 'google'
+  and ia.id = (
+    select inner_ia.id
+    from public.integration_accounts inner_ia
+    where inner_ia.user_id = ia.user_id
+      and inner_ia.provider = 'google'
+    order by inner_ia.created_at asc
+    limit 1
+  )
+  and not exists (
+    select 1 from public.integration_accounts d
+    where d.user_id = ia.user_id and d.provider = 'google' and d.is_default
+  );
+
 -- 5. widget_cache is now per-account, not per-provider.
 alter table public.widget_cache
   drop constraint if exists widget_cache_user_provider_widget_key;

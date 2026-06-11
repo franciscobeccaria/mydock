@@ -236,6 +236,7 @@ function WidgetGrid({
     {
       id: null,
       label: accountEmail ?? "Default account",
+      provider: "google",
       name: accountName ?? accountEmail,
       avatarUrl: accountAvatarUrl,
     },
@@ -244,12 +245,14 @@ function WidgetGrid({
       .map((c) => ({
         id: c.id,
         label: c.email ?? "Google account",
+        provider: "google" as const,
         name: c.email,
         avatarUrl: null,
       })),
     ...connections.linear.map((c) => ({
       id: c.id,
       label: c.email ?? "Linear account",
+      provider: "linear" as const,
       name: c.email,
       avatarUrl: null,
     })),

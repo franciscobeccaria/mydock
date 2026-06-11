@@ -47,11 +47,23 @@ import { cn } from "@/lib/utils";
 export type WidgetAccount = {
   id: string | null;
   label: string;
+  /**
+   * Which provider family this account belongs to: "google" (used by gmail,
+   * tasks, calendar widgets) or "linear". The default/login account is "google".
+   * Used to filter the picker so a widget only offers accounts it can actually
+   * use — selecting a Linear account on a Gmail widget would 404.
+   */
+  provider: "google" | "linear";
   /** Display name for the avatar fallback initials; falls back to the label. */
   name?: string | null;
   /** Profile image (e.g. Google avatar); omitted → letter-fallback avatar. */
   avatarUrl?: string | null;
 };
+
+/** The provider family a catalog entry's widget reads from. */
+function accountProviderForEntry(provider: WidgetCatalogEntry["provider"]): "google" | "linear" {
+  return provider === "linear" ? "linear" : "google";
+}
 
 // Sentinel select value for the default (login) account, whose id is `null`.
 const DEFAULT_ACCOUNT = "__default__";
@@ -102,6 +114,14 @@ export function WidgetCatalogDialog({
     onOpenChange(next);
   }
 
+  // Pick a widget and reset the account picker to the default, so the selection
+  // always starts on an account valid for the chosen widget's provider (a stale
+  // Linear id must never carry over to a Gmail widget).
+  function selectWidget(slotId: SlotId) {
+    setSelected(slotId);
+    setAccountValue(DEFAULT_ACCOUNT);
+  }
+
   function commit() {
     if (!selected) return;
     onAdd(selected, accountValue === DEFAULT_ACCOUNT ? null : accountValue);
@@ -126,7 +146,7 @@ export function WidgetCatalogDialog({
           <ListStep
             addedByApp={addedByApp}
             connectedByProvider={connectedByProvider}
-            onSelect={setSelected}
+            onSelect={selectWidget}
           />
         )}
       </DialogContent>
@@ -407,8 +427,12 @@ function PreviewStep({
   onAdd: () => void;
 }) {
   const group = APP_GROUPS.find((g) => g.id === entry.appId);
+  // Only offer accounts this widget can actually use. A Linear account on a
+  // Gmail widget would store a Linear id that /api/widgets/gmail can't resolve.
+  const accountProvider = accountProviderForEntry(entry.provider);
+  const usableAccounts = accounts.filter((a) => a.provider === accountProvider);
   const selectedAccount =
-    accounts.find((a) => (a.id ?? DEFAULT_ACCOUNT) === accountValue) ?? accounts[0];
+    usableAccounts.find((a) => (a.id ?? DEFAULT_ACCOUNT) === accountValue) ?? usableAccounts[0];
 
   return (
     <>
@@ -454,7 +478,7 @@ function PreviewStep({
               <SelectIcon />
             </SelectTrigger>
             <SelectContent>
-              {accounts.map((account) => (
+              {usableAccounts.map((account) => (
                 <SelectItem key={account.id ?? DEFAULT_ACCOUNT} value={account.id ?? DEFAULT_ACCOUNT}>
                   <AccountOption account={account} />
                 </SelectItem>

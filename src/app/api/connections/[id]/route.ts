@@ -33,6 +33,26 @@ export async function DELETE(_req: NextRequest, ctx: { params: Promise<{ id: str
 
   const del = await service.from("integration_accounts").delete().eq("user_id", userId).eq("id", id);
   if (del.error) return NextResponse.json({ error: "delete_failed" }, { status: 500 });
+
+  // If that was the last connection for this provider, remove the lingering
+  // `integrations` status row too (its FK is `on delete set null`, so it would
+  // otherwise stay status='connected' and the app would keep reporting the
+  // provider connected after all its credentials are gone).
+  const remaining = await service
+    .from("integration_accounts")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("provider", row.data.provider)
+    .limit(1);
+
+  if (!remaining.error && (remaining.data?.length ?? 0) === 0) {
+    await service
+      .from("integrations")
+      .delete()
+      .eq("user_id", userId)
+      .eq("provider", row.data.provider);
+  }
+
   return NextResponse.json({ ok: true });
 }
 
