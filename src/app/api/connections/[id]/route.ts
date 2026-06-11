@@ -1,0 +1,68 @@
+import { NextRequest, NextResponse } from "next/server";
+
+import { createClient } from "@/lib/supabase/server";
+import { createServiceRoleClient } from "@/lib/supabase/service";
+
+async function getUserId() {
+  const supabase = await createClient();
+  const { data: { user } } = supabase ? await supabase.auth.getUser() : { data: { user: null } };
+  return user?.id ?? null;
+}
+
+// Disconnect a connection. The default (login Google) connection cannot be removed.
+export async function DELETE(_req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+  const userId = await getUserId();
+  if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const { id } = await ctx.params;
+
+  const service = createServiceRoleClient();
+  if (!service) return NextResponse.json({ error: "unavailable" }, { status: 503 });
+
+  const row = await service
+    .from("integration_accounts")
+    .select("id,is_default")
+    .eq("user_id", userId)
+    .eq("id", id)
+    .maybeSingle();
+
+  if (row.error || !row.data) return NextResponse.json({ error: "not_found" }, { status: 404 });
+  if (row.data.is_default)
+    return NextResponse.json({ error: "default_not_removable" }, { status: 409 });
+
+  const del = await service.from("integration_accounts").delete().eq("user_id", userId).eq("id", id);
+  if (del.error) return NextResponse.json({ error: del.error.message }, { status: 500 });
+  return NextResponse.json({ ok: true });
+}
+
+// Set a connection as the default for its provider.
+export async function PATCH(_req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+  const userId = await getUserId();
+  if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const { id } = await ctx.params;
+
+  const service = createServiceRoleClient();
+  if (!service) return NextResponse.json({ error: "unavailable" }, { status: 503 });
+
+  const target = await service
+    .from("integration_accounts")
+    .select("id,provider")
+    .eq("user_id", userId)
+    .eq("id", id)
+    .maybeSingle();
+  if (target.error || !target.data)
+    return NextResponse.json({ error: "not_found" }, { status: 404 });
+
+  // Clear the old default for this provider, set the new one.
+  await service
+    .from("integration_accounts")
+    .update({ is_default: false })
+    .eq("user_id", userId)
+    .eq("provider", target.data.provider);
+  const set = await service
+    .from("integration_accounts")
+    .update({ is_default: true })
+    .eq("user_id", userId)
+    .eq("id", id);
+  if (set.error) return NextResponse.json({ error: set.error.message }, { status: 500 });
+  return NextResponse.json({ ok: true });
+}
