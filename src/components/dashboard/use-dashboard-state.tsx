@@ -14,23 +14,20 @@ import {
 import {
   dashboardStateSchema,
   defaultInstances,
-  slotIdsToInstances,
   type DashboardStatePayload,
   type Shortcut,
   type WidgetInstance,
 } from "@/components/dashboard/widget-instance";
-import { DEFAULT_LAYOUT, isSlotId, type SlotId } from "@/components/widgets/widget-catalog";
 
 // Cache keys are scoped per user so a shared browser (sign out → sign in as a
 // different account) never seeds the new user's server row from the previous
-// user's cached layout. The unscoped legacy keys below are read once and migrated
-// into the current user's scoped keys.
+// user's cache. We deliberately do NOT read the older *unscoped* cache keys
+// (mydock:dashboard:v2 / :shortcuts:v1 / :widget-order:v1 / :widget-pref:*): they
+// can't be attributed to the current user, so reading them would re-open that
+// cross-account leak. A returning user is restored from their server row instead
+// (the source of truth); a fresh user is seeded with neutral defaults.
 const LAYOUT_KEY = (userId: string) => `mydock:dashboard:v2:${userId}`;
 const SHORTCUTS_KEY = (userId: string) => `mydock:shortcuts:v1:${userId}`;
-const LEGACY_LAYOUT_KEY = "mydock:dashboard:v2";
-const LEGACY_SHORTCUTS_KEY = "mydock:shortcuts:v1";
-const LAYOUT_V1_KEY = "mydock:widget-order:v1";
-const WIDGET_PREF_PREFIX = "mydock:widget-pref:";
 const SAVE_DEBOUNCE_MS = 500;
 
 type DashboardState = {
@@ -60,76 +57,26 @@ function readCachedState(userId: string | null): DashboardStatePayload {
 
 function readCachedLayout(userId: string): WidgetInstance[] {
   try {
-    // Prefer the user-scoped cache; fall back to the unscoped legacy key once.
-    const raw =
-      window.localStorage.getItem(LAYOUT_KEY(userId)) ??
-      window.localStorage.getItem(LEGACY_LAYOUT_KEY);
-    if (!raw) return slotIdsToInstances(readLegacySlotIds(), readWidgetPrefs());
+    // Only the user-scoped key is trusted for paint. No scoped key → neutral
+    // defaults (the unscoped legacy keys can't be attributed to this user, so
+    // reading them would risk painting another account's layout on a shared
+    // browser). The real layout arrives from the server row on reconcile.
+    const raw = window.localStorage.getItem(LAYOUT_KEY(userId));
+    if (!raw) return defaultInstances();
 
     const parsed = JSON.parse(raw) as unknown;
     if (!Array.isArray(parsed)) return defaultInstances();
 
-    // Already instances? Validate and keep. Otherwise treat as the legacy SlotId[].
-    if (parsed.every((entry) => typeof entry === "object" && entry !== null && "instanceId" in entry)) {
-      const result = dashboardStateSchema.safeParse({ layout: parsed, shortcuts: [] });
-      return result.success ? result.data.layout : defaultInstances();
-    }
-
-    const slotIds = parsed.filter((id): id is SlotId => typeof id === "string" && isSlotId(id));
-    return slotIdsToInstances(slotIds, readWidgetPrefs());
+    const result = dashboardStateSchema.safeParse({ layout: parsed, shortcuts: [] });
+    return result.success ? result.data.layout : defaultInstances();
   } catch {
     return defaultInstances();
   }
 }
 
-/**
- * Slot ids to seed from when no v2 layout exists. Honors the pre-v2
- * `mydock:widget-order:v1` key (an order-only array over the full default set)
- * so a user who hasn't loaded the app since the v1 era keeps their saved order
- * instead of having DEFAULT_LAYOUT seeded over it. Falls back to DEFAULT_LAYOUT.
- */
-function readLegacySlotIds(): SlotId[] {
-  try {
-    const v1 = window.localStorage.getItem(LAYOUT_V1_KEY);
-    if (v1) {
-      const parsed = JSON.parse(v1) as unknown;
-      if (Array.isArray(parsed)) {
-        const seen = new Set<SlotId>();
-        for (const id of parsed) {
-          if (typeof id === "string" && isSlotId(id)) seen.add(id);
-        }
-        // v1 was order-only over the full set; back-fill any missing defaults.
-        const ordered = [...seen, ...DEFAULT_LAYOUT.filter((id) => !seen.has(id))];
-        if (ordered.length > 0) return ordered;
-      }
-    }
-  } catch {
-    // Unreadable v1 — fall through to defaults.
-  }
-  return [...DEFAULT_LAYOUT];
-}
-
-/** Collect the old per-widget preference keys so soft-migration can fold them in. */
-function readWidgetPrefs(): Record<string, string> {
-  const prefs: Record<string, string> = {};
-  try {
-    for (let i = 0; i < window.localStorage.length; i += 1) {
-      const key = window.localStorage.key(i);
-      if (!key || !key.startsWith(WIDGET_PREF_PREFIX)) continue;
-      const value = window.localStorage.getItem(key);
-      if (value !== null) prefs[key.slice(WIDGET_PREF_PREFIX.length)] = value;
-    }
-  } catch {
-    // Storage unavailable — no prefs to migrate.
-  }
-  return prefs;
-}
-
 function readCachedShortcuts(userId: string): Shortcut[] {
   try {
-    const raw =
-      window.localStorage.getItem(SHORTCUTS_KEY(userId)) ??
-      window.localStorage.getItem(LEGACY_SHORTCUTS_KEY);
+    const raw = window.localStorage.getItem(SHORTCUTS_KEY(userId));
     if (!raw) return [];
     const result = dashboardStateSchema.safeParse({ layout: [], shortcuts: JSON.parse(raw) });
     return result.success ? result.data.shortcuts : [];
@@ -219,8 +166,8 @@ function useDashboardStateStore(userId: string | null): DashboardState {
   // Reconcile once with the server when the query first resolves. This is the
   // legitimate "sync an external system into React state" case: the server row
   // is the source of truth, so it overwrites the cache-seeded initial state. A
-  // null row means a fresh user — seed the server from the cached state instead
-  // (a pure external write, no local state change). Guarded to run once.
+  // null row means a fresh user — seed the server with neutral defaults. Guarded
+  // to run once.
   const reconciledRef = useRef(false);
   useEffect(() => {
     if (!query.isSuccess || reconciledRef.current) return;
@@ -230,10 +177,14 @@ function useDashboardStateStore(userId: string | null): DashboardState {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time reconcile of server data into state
       setState(query.data);
     } else {
-      setState((current) => {
-        void putServerState(current);
-        return current;
-      });
+      // Fresh user (no server row): seed neutral DEFAULT_LAYOUT, never the in-memory
+      // state — that could carry unscoped legacy-cache data from another account on
+      // a shared browser. The one-time localStorage→server migration for the original
+      // user already ran (they have a row), so a null row genuinely means "new user".
+      const seeded: DashboardStatePayload = { layout: defaultInstances(), shortcuts: [] };
+      void putServerState(seeded);
+      writeCache(userId, seeded);
+      setState(seeded);
     }
   }, [query.isSuccess, query.data, userId]);
 
