@@ -170,7 +170,17 @@ async function resolveGoogleAccessToken(userId: string, accountId?: string | nul
       accountId: row.id,
       refreshToken: refreshed.refreshToken ?? refreshToken,
     };
-  } catch {
+  } catch (error) {
+    // The cookie fallback holds ONLY the login account's tokens. Using it for a
+    // specific non-default accountId would render the login account's data under
+    // another account's identity — a cross-account leak. Only fall back when no
+    // specific account was requested (i.e. the default/login account).
+    if (accountId) {
+      throw error instanceof Error
+        ? error
+        : new Error("No Google access token is available for this account.");
+    }
+
     const cookieTokens = await getGoogleTokensFromCookies();
 
     if (cookieTokens.accessToken) {

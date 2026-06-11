@@ -21,15 +21,17 @@ export function ConnectionsList({
   return (
     <div className="grid gap-6">
       {/* ── Google group ─────────────────────────────────────────── */}
+      {/* Connecting a SECOND Google account needs a dedicated OAuth flow with
+          its own per-account refresh token (Supabase Auth is single-identity and
+          doesn't expose durable per-identity tokens). Tracked as a follow-up;
+          disabled for now. The login Google account is the default connection. */}
       <ProviderGroup
         provider="gmail"
         title="Google"
         connections={connections.google}
         addLabel="Connect another Google account"
-        onAdd={() => {
-          window.location.href =
-            "/api/integrations/google/start?next=/connections";
-        }}
+        addDisabledHint="Coming soon"
+        onAdd={() => {}}
       />
 
       {/* ── Linear group ─────────────────────────────────────────── */}
@@ -54,12 +56,15 @@ function ProviderGroup({
   connections,
   addLabel,
   onAdd,
+  addDisabledHint,
 }: {
   provider: "gmail" | "linear";
   title: string;
   connections: ConnectionRecord[];
   addLabel: string;
   onAdd: () => void;
+  /** When set, the add button is disabled and shows this hint (e.g. "Coming soon"). */
+  addDisabledHint?: string;
 }) {
   return (
     <div className="rounded-[28px] border border-[#E7E7EA] bg-white shadow-[0_12px_32px_rgba(17,24,39,0.05)]">
@@ -78,15 +83,19 @@ function ProviderGroup({
         </div>
       ) : null}
 
-      <div className="px-6 py-4">
+      <div className="flex items-center gap-3 px-6 py-4">
         <button
           type="button"
           onClick={onAdd}
-          className="flex items-center gap-2 rounded-full border border-dashed border-[#D4D4D8] px-4 py-2 text-sm font-medium text-[#52525B] transition-colors hover:border-[#18181B] hover:text-[#18181B]"
+          disabled={Boolean(addDisabledHint)}
+          className="flex items-center gap-2 rounded-full border border-dashed border-[#D4D4D8] px-4 py-2 text-sm font-medium text-[#52525B] transition-colors hover:border-[#18181B] hover:text-[#18181B] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-[#D4D4D8] disabled:hover:text-[#52525B]"
         >
           <Plus className="size-4" />
           {addLabel}
         </button>
+        {addDisabledHint ? (
+          <span className="text-xs text-[#A1A1AA]">{addDisabledHint}</span>
+        ) : null}
       </div>
     </div>
   );
