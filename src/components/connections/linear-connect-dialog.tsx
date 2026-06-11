@@ -86,20 +86,23 @@ export function LinearConnectDialog({
           <li className="flex gap-2">
             <Step n={1} />
             <span>
-              Open Linear → Settings → Security &amp; access → API.{" "}
+              In Linear, open Settings → Security &amp; access → Personal API keys.{" "}
               <a
-                href="https://linear.app/settings/api"
+                href="https://linear.app/settings/account/security"
                 target="_blank"
                 rel="noreferrer"
                 className="inline-flex items-center gap-1 font-medium text-[#18181B] underline underline-offset-2"
               >
-                Open Linear API settings <ExternalLink className="size-3" />
+                Open Security &amp; access <ExternalLink className="size-3" />
               </a>
             </span>
           </li>
           <li className="flex gap-2">
             <Step n={2} />
-            <span>Click &ldquo;New API key&rdquo; and name it &ldquo;MyDock&rdquo;.</span>
+            <span>
+              Under Personal API keys, create a new key and name it
+              &ldquo;MyDock&rdquo;.
+            </span>
           </li>
           <li className="flex gap-2">
             <Step n={3} />
