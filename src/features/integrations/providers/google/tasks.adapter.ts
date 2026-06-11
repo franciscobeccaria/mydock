@@ -19,7 +19,10 @@ type TasksResponse = {
   }[];
 };
 
-export async function getGoogleTaskItems(userId?: string): Promise<WidgetItem[]> {
+export async function getGoogleTaskItems(
+  userId?: string,
+  accountId?: string | null,
+): Promise<WidgetItem[]> {
   if (!userId) {
     return googleTasksMockItems;
   }
@@ -27,6 +30,8 @@ export async function getGoogleTaskItems(userId?: string): Promise<WidgetItem[]>
   const taskLists = await googleApiFetch<TaskListsResponse>(
     userId,
     "https://tasks.googleapis.com/tasks/v1/users/@me/lists?maxResults=20",
+    undefined,
+    accountId,
   );
 
   const lists = taskLists.items ?? [];
@@ -44,7 +49,7 @@ export async function getGoogleTaskItems(userId?: string): Promise<WidgetItem[]>
       url.searchParams.set("showHidden", "false");
       url.searchParams.set("maxResults", "100");
 
-      const response = await googleApiFetch<TasksResponse>(userId, url);
+      const response = await googleApiFetch<TasksResponse>(userId, url, undefined, accountId);
       return (response.items ?? []).map((task) => ({
         ...task,
         listTitle: list.title ?? "Tasks",
