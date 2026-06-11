@@ -4,8 +4,8 @@ import { allGoogleWorkspaceScopes } from "@/features/integrations/providers/goog
 import { createClient } from "@/lib/supabase/server";
 
 function getSafeNext(request: NextRequest) {
-  const next = request.nextUrl.searchParams.get("next") ?? "/dashboard";
-  return next.startsWith("/") ? next : "/dashboard";
+  const next = request.nextUrl.searchParams.get("next") ?? "/";
+  return next.startsWith("/") ? next : "/";
 }
 
 export async function GET(request: NextRequest) {
@@ -33,8 +33,8 @@ export async function GET(request: NextRequest) {
   if (error || !data.url) {
     console.error("Google sign-in could not start", error);
 
-    const fallbackPath = next.startsWith("/settings")
-      ? "/settings/integrations?notice=google-unavailable"
+    const fallbackPath = next.startsWith("/connections")
+      ? "/connections?notice=google-unavailable"
       : "/login?reason=auth-unavailable";
 
     return NextResponse.redirect(new URL(fallbackPath, request.url));

@@ -21,7 +21,7 @@ export default async function LoginPage({
     } = await supabase.auth.getUser();
 
     if (user) {
-      redirect("/dashboard");
+      redirect("/");
     }
   }
 
@@ -60,7 +60,7 @@ export default async function LoginPage({
 
         {isSupabaseConfigured ? (
           <Link
-            href="/api/integrations/google/start?next=/dashboard"
+            href="/api/integrations/google/start?next=/"
             className={cn(buttonVariants({ size: "lg" }), "w-full")}
           >
             Continue with Google <ArrowRight className="ml-2 size-4" />

@@ -29,7 +29,7 @@ export function AppHeader({
 }) {
   const pathname = usePathname();
   const router = useRouter();
-  const isDashboard = pathname === "/dashboard";
+  const isDashboard = pathname === "/";
 
   return (
     <header className="sticky top-0 z-20 border-b border-[#ECECEF] bg-[#FAFAFA]/95 backdrop-blur-xl">
@@ -83,11 +83,11 @@ export function AppHeader({
               </div>
               <DropdownMenuSeparator />
               {isDashboard ? (
-                <DropdownMenuItem onClick={() => router.push("/settings/integrations")}>
-                  <Settings className="mr-2 size-4" /> Integrations
+                <DropdownMenuItem onClick={() => router.push("/connections")}>
+                  <Settings className="mr-2 size-4" /> Connections
                 </DropdownMenuItem>
               ) : (
-                <DropdownMenuItem onClick={() => router.push("/dashboard")}>
+                <DropdownMenuItem onClick={() => router.push("/")}>
                   <LayoutGrid className="mr-2 size-4" /> Dashboard
                 </DropdownMenuItem>
               )}
