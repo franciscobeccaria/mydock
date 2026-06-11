@@ -9,6 +9,33 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
+      dashboard_state: {
+        Row: {
+          created_at: string;
+          layout: Json;
+          shortcuts: Json;
+          updated_at: string;
+          user_id: string;
+          version: number;
+        };
+        Insert: {
+          created_at?: string;
+          layout?: Json;
+          shortcuts?: Json;
+          updated_at?: string;
+          user_id: string;
+          version?: number;
+        };
+        Update: {
+          created_at?: string;
+          layout?: Json;
+          shortcuts?: Json;
+          updated_at?: string;
+          user_id?: string;
+          version?: number;
+        };
+        Relationships: [];
+      };
       integration_accounts: {
         Row: {
           access_token_encrypted: string | null;
