@@ -139,9 +139,13 @@ function useDashboardStateStore(userId: string | null): DashboardState {
   // initializer is safe and gives an instant first paint from cache.
   const [state, setState] = useState<DashboardStatePayload>(() => readCachedState(userId));
 
+  // Key the query by userId (and gate on it) so the singleton browser QueryClient
+  // never serves account A's cached row to account B after an in-app account switch
+  // without a full reload.
   const query = useQuery({
-    queryKey: ["dashboard-state"],
+    queryKey: ["dashboard-state", userId],
     queryFn: fetchServerState,
+    enabled: Boolean(userId),
     staleTime: 5 * 60_000,
     gcTime: 30 * 60_000,
     refetchOnWindowFocus: false,
