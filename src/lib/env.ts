@@ -10,9 +10,6 @@ const envSchema = z.object({
   GOOGLE_CLIENT_ID: z.string().min(1).optional(),
   GOOGLE_CLIENT_SECRET: z.string().min(1).optional(),
   GOOGLE_REDIRECT_URI: z.string().url().optional(),
-  LINEAR_CLIENT_ID: z.string().min(1).optional(),
-  LINEAR_CLIENT_SECRET: z.string().min(1).optional(),
-  LINEAR_REDIRECT_URI: z.string().url().optional(),
   OPENAI_API_KEY: z.string().min(1).optional(),
 });
 
@@ -28,9 +25,6 @@ const rawEnv = {
   GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID,
   GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET,
   GOOGLE_REDIRECT_URI: process.env.GOOGLE_REDIRECT_URI,
-  LINEAR_CLIENT_ID: process.env.LINEAR_CLIENT_ID,
-  LINEAR_CLIENT_SECRET: process.env.LINEAR_CLIENT_SECRET,
-  LINEAR_REDIRECT_URI: process.env.LINEAR_REDIRECT_URI,
   OPENAI_API_KEY: process.env.OPENAI_API_KEY,
 };
 
@@ -86,12 +80,8 @@ export function getMissingGoogleEnv() {
   return missing;
 }
 
-export function getMissingLinearEnv() {
-  const missing: string[] = [];
-
-  if (!env.LINEAR_CLIENT_ID) missing.push("LINEAR_CLIENT_ID");
-  if (!env.LINEAR_CLIENT_SECRET) missing.push("LINEAR_CLIENT_SECRET");
-  if (!env.LINEAR_REDIRECT_URI) missing.push("LINEAR_REDIRECT_URI");
-
-  return missing;
+// Linear now uses a per-user pasted API key (no OAuth env). Kept for the health
+// route's shape; there are no required Linear env vars anymore.
+export function getMissingLinearEnv(): string[] {
+  return [];
 }
