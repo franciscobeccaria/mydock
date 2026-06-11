@@ -31,21 +31,28 @@ async function getGoogleTokensFromCookies() {
   };
 }
 
-async function getGoogleAccountRow(userId: string) {
+// accountId omitted → the user's default Google connection (is_default first,
+// then oldest by created_at). Mirrors resolveLinearKey's selection.
+async function getGoogleAccountRow(userId: string, accountId?: string | null) {
   const serviceClient = createServiceRoleClient();
 
   if (!serviceClient) {
     throw new Error("Google integrations are unavailable on the server.");
   }
 
-  const { data, error } = await serviceClient
+  let query = serviceClient
     .from("integration_accounts")
     .select(
       "id,access_token_encrypted,refresh_token_encrypted,token_expires_at,provider_account_email,scopes",
     )
     .eq("user_id", userId)
-    .eq("provider", "google")
-    .maybeSingle();
+    .eq("provider", "google");
+
+  query = accountId
+    ? query.eq("id", accountId)
+    : query.order("is_default", { ascending: false }).order("created_at", { ascending: true });
+
+  const { data, error } = await query.limit(1).maybeSingle();
 
   if (error) {
     throw new Error(`Unable to load Google account: ${error.message}`);
@@ -132,9 +139,9 @@ async function refreshGoogleAccessToken(
   } satisfies RefreshedGoogleToken;
 }
 
-async function resolveGoogleAccessToken(userId: string) {
+async function resolveGoogleAccessToken(userId: string, accountId?: string | null) {
   try {
-    const { row } = await getGoogleAccountRow(userId);
+    const { row } = await getGoogleAccountRow(userId, accountId);
     const accessToken = decryptSecret(row.access_token_encrypted);
     const refreshToken = decryptSecret(row.refresh_token_encrypted);
     const expiresAt = row.token_expires_at ? new Date(row.token_expires_at).getTime() : null;
@@ -163,7 +170,17 @@ async function resolveGoogleAccessToken(userId: string) {
       accountId: row.id,
       refreshToken: refreshed.refreshToken ?? refreshToken,
     };
-  } catch {
+  } catch (error) {
+    // The cookie fallback holds ONLY the login account's tokens. Using it for a
+    // specific non-default accountId would render the login account's data under
+    // another account's identity — a cross-account leak. Only fall back when no
+    // specific account was requested (i.e. the default/login account).
+    if (accountId) {
+      throw error instanceof Error
+        ? error
+        : new Error("No Google access token is available for this account.");
+    }
+
     const cookieTokens = await getGoogleTokensFromCookies();
 
     if (cookieTokens.accessToken) {
@@ -182,8 +199,11 @@ async function resolveGoogleAccessToken(userId: string) {
 
 type ResolvedGoogleToken = Awaited<ReturnType<typeof resolveGoogleAccessToken>>;
 
-export async function resolveGoogleToken(userId: string): Promise<ResolvedGoogleToken> {
-  return resolveGoogleAccessToken(userId);
+export async function resolveGoogleToken(
+  userId: string,
+  accountId?: string | null,
+): Promise<ResolvedGoogleToken> {
+  return resolveGoogleAccessToken(userId, accountId);
 }
 
 export async function googleApiFetchWithToken<T>(
@@ -224,7 +244,8 @@ export async function googleApiFetch<T>(
   userId: string,
   input: string | URL,
   init?: RequestInit,
+  accountId?: string | null,
 ) {
-  const account = await resolveGoogleAccessToken(userId);
+  const account = await resolveGoogleAccessToken(userId, accountId);
   return googleApiFetchWithToken<T>(account, input, init);
 }

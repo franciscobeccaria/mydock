@@ -5,6 +5,7 @@ import { getGoogleTaskItems } from "@/features/integrations/providers/google/tas
 import { getLinearItems } from "@/features/integrations/providers/linear/adapter";
 import { linearScopes } from "@/features/integrations/providers/linear/types";
 import { buildTodaySummary } from "@/features/widgets/summary";
+import { CONNECT_PATH } from "@/features/integrations/connect-paths";
 import { isSupabaseConfigured } from "@/lib/env";
 import { createClient } from "@/lib/supabase/server";
 
@@ -22,25 +23,25 @@ const providerMeta = {
     label: "Linear",
     description: "Follow your assigned issues and the work that needs attention.",
     requiredScopes: [...linearScopes],
-    connectPath: "/api/integrations/linear/start?next=/settings/integrations",
+    connectPath: CONNECT_PATH.linear,
   },
   gmail: {
     label: "Gmail",
     description: "See the messages that matter most without leaving your dashboard.",
     requiredScopes: getRequiredGoogleScopes("gmail"),
-    connectPath: "/api/integrations/google/start?next=/settings/integrations",
+    connectPath: CONNECT_PATH.gmail,
   },
   google_tasks: {
     label: "Google Tasks",
     description: "Keep your top tasks in view while you work.",
     requiredScopes: getRequiredGoogleScopes("google_tasks"),
-    connectPath: "/api/integrations/google/start?next=/settings/integrations",
+    connectPath: CONNECT_PATH.google_tasks,
   },
   google_calendar: {
     label: "Google Calendar",
     description: "Track the next events shaping your day.",
     requiredScopes: getRequiredGoogleScopes("google_calendar"),
-    connectPath: "/api/integrations/google/start?next=/settings/integrations",
+    connectPath: CONNECT_PATH.google_calendar,
   },
 } satisfies Record<
   Provider,
@@ -257,6 +258,7 @@ export async function getWidgetPayload(
   userId: string,
   previewState?: WidgetViewState,
   view?: GmailView,
+  accountId?: string | null,
 ): Promise<WidgetPayload> {
   const statusRecords = await getIntegrationStatusRecords(userId);
   const statusRecord = statusRecords.find((record) => record.provider === provider);
@@ -267,7 +269,7 @@ export async function getWidgetPayload(
 
   try {
     if (provider === "gmail") {
-      const { items, unreadCount } = await getGmailItems(userId, view);
+      const { items, unreadCount } = await getGmailItems(userId, view, accountId);
       return buildWidgetPayload(provider, statusRecord, items, false, previewState, {
         unreadCount,
       });
@@ -275,10 +277,10 @@ export async function getWidgetPayload(
 
     const items =
       provider === "linear"
-        ? await getLinearItems(userId)
+        ? await getLinearItems(userId, accountId)
         : provider === "google_tasks"
-          ? await getGoogleTaskItems(userId)
-          : await getGoogleCalendarItems(userId);
+          ? await getGoogleTaskItems(userId, accountId)
+          : await getGoogleCalendarItems(userId, accountId);
 
     return buildWidgetPayload(
       provider,

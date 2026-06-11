@@ -188,7 +188,7 @@ export function LinearWidget({
       {payload.state === "not_connected" ? (
         <WidgetNotConnectedState
           providerLabel="Linear"
-          actionHref="/api/integrations/linear/start?next=/dashboard"
+          actionHref="/connections"
           actionLabel="Connect Linear"
         />
       ) : null}

@@ -114,18 +114,25 @@ export async function syncGoogleWorkspaceFromSession({
   let accountId: string | null = null;
 
   if (serviceClient) {
+    // Scope the lookup to this specific account (multi-account: there can be
+    // more than one google row per user, so filter by provider_account_id, not
+    // just provider, to avoid maybeSingle throwing on multiple rows).
     const existingAccount = (
       await serviceClient
         .from("integration_accounts")
         .select("id, refresh_token_encrypted")
         .eq("user_id", session.user.id)
         .eq("provider", "google")
+        .eq("provider_account_id", providerAccountId)
         .maybeSingle()
     ).data;
 
     const accountPayload = {
       user_id: session.user.id,
       provider: "google",
+      // The Google login account is the user's identity and the default
+      // connection (non-removable). Sign-in always re-asserts that.
+      is_default: true,
       provider_account_id: providerAccountId,
       provider_account_email: providerAccountEmail,
       scopes: grantedScopes,
@@ -138,7 +145,7 @@ export async function syncGoogleWorkspaceFromSession({
     const accountResult = await serviceClient
       .from("integration_accounts")
       .upsert(accountPayload, {
-        onConflict: "user_id,provider",
+        onConflict: "user_id,provider,provider_account_id",
       })
       .select("id")
       .single();

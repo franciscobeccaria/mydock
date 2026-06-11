@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+import { LayoutGrid, Plug } from "lucide-react";
+
 import {
   Sidebar,
   SidebarContent,
@@ -10,11 +12,21 @@ import {
   SidebarGroup,
   SidebarGroupContent,
   SidebarHeader,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
   SidebarRail,
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 import { NavUser } from "@/components/layout/nav-user";
 import { EditDashboardToggle } from "@/components/dashboard/edit-dashboard-toggle";
+
+// Top-level navigation. NOTE: Dashboard points at /dashboard (the current
+// route); FRA-143 moves the dashboard to / and updates this href.
+const NAV_ITEMS = [
+  { href: "/dashboard", label: "Dashboard", icon: LayoutGrid },
+  { href: "/connections", label: "Connections", icon: Plug },
+] as const;
 
 interface AppSidebarProps {
   user: {
@@ -62,6 +74,27 @@ export function AppSidebar({ user }: AppSidebarProps) {
             </SidebarGroupContent>
           </SidebarGroup>
         ) : null}
+
+        <SidebarGroup>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {NAV_ITEMS.map((item) => (
+                <SidebarMenuItem key={item.href}>
+                  <SidebarMenuButton
+                    isActive={pathname === item.href}
+                    tooltip={item.label}
+                    render={
+                      <Link href={item.href}>
+                        <item.icon />
+                        <span>{item.label}</span>
+                      </Link>
+                    }
+                  />
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
       </SidebarContent>
 
       <SidebarFooter>

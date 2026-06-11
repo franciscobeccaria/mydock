@@ -110,6 +110,7 @@ export type GmailView = "all" | "unread";
 export async function getGmailItems(
   userId?: string,
   view: GmailView = "all",
+  accountId?: string | null,
 ): Promise<GmailWidgetData> {
   if (!userId) {
     const mockItems =
@@ -134,7 +135,7 @@ export async function getGmailItems(
   }
 
   // Resolve token once and reuse it for the list, count, and all detail fetches.
-  const token = await resolveGoogleToken(userId);
+  const token = await resolveGoogleToken(userId, accountId);
 
   // The list and the Primary unread total are independent — fetch them in parallel.
   const [listResponse, primaryUnread] = await Promise.all([

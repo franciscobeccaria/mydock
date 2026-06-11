@@ -17,7 +17,10 @@ type GoogleCalendarEventsResponse = {
   }[];
 };
 
-export async function getGoogleCalendarItems(userId?: string): Promise<WidgetItem[]> {
+export async function getGoogleCalendarItems(
+  userId?: string,
+  accountId?: string | null,
+): Promise<WidgetItem[]> {
   if (!userId) {
     return googleCalendarMockItems;
   }
@@ -30,7 +33,7 @@ export async function getGoogleCalendarItems(userId?: string): Promise<WidgetIte
   url.searchParams.set("orderBy", "startTime");
   url.searchParams.set("timeMin", new Date().toISOString());
 
-  const events = await googleApiFetch<GoogleCalendarEventsResponse>(userId, url);
+  const events = await googleApiFetch<GoogleCalendarEventsResponse>(userId, url, undefined, accountId);
 
   return (events.items ?? []).map((event) => ({
     id: event.id,

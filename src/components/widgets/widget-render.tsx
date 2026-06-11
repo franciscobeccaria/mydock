@@ -33,10 +33,12 @@ function makeLoadingPayload(provider: Provider, title: string): WidgetPayload {
   };
 }
 
-export async function fetchWidget(provider: Provider, view?: string) {
-  const url = view
-    ? `/api/widgets/${provider}?view=${encodeURIComponent(view)}`
-    : `/api/widgets/${provider}`;
+export async function fetchWidget(provider: Provider, view?: string, accountId?: string | null) {
+  const params = new URLSearchParams();
+  if (view) params.set("view", view);
+  if (accountId) params.set("accountId", accountId);
+  const qs = params.toString();
+  const url = `/api/widgets/${provider}${qs ? `?${qs}` : ""}`;
   const response = await fetch(url, { cache: "no-store" });
   if (!response.ok) throw new Error(`Failed to load ${provider}.`);
   return (await response.json()) as WidgetPayload;
@@ -61,12 +63,13 @@ export function getWidgetPayload(
 }
 
 /** The TanStack Query key for a slot's data, keyed by slot + view where it matters. */
-export function widgetQueryKey(slotId: SlotId, gmailView?: string) {
+export function widgetQueryKey(slotId: SlotId, gmailView?: string, accountId?: string | null) {
   const provider = CATALOG_BY_ID[slotId].provider;
-  if (slotId === "gmail") return ["integrations", "gmail", "emails", gmailView] as const;
-  if (provider === "google_calendar") return ["integrations", "calendar", "events"] as const;
-  if (provider === "google_tasks") return ["integrations", "tasks"] as const;
-  return ["integrations", "linear", "issues"] as const;
+  const acct = accountId ?? "__default__";
+  if (slotId === "gmail") return ["integrations", "gmail", "emails", gmailView, acct] as const;
+  if (provider === "google_calendar") return ["integrations", "calendar", "events", acct] as const;
+  if (provider === "google_tasks") return ["integrations", "tasks", acct] as const;
+  return ["integrations", "linear", "issues", acct] as const;
 }
 
 /** Per-provider staleTime, shared so the grid and the preview cache consistently. */
