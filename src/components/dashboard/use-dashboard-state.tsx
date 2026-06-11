@@ -22,6 +22,7 @@ import {
 import { DEFAULT_LAYOUT, isSlotId, type SlotId } from "@/components/widgets/widget-catalog";
 
 const LAYOUT_KEY = "mydock:dashboard:v2";
+const LAYOUT_V1_KEY = "mydock:widget-order:v1";
 const SHORTCUTS_KEY = "mydock:shortcuts:v1";
 const WIDGET_PREF_PREFIX = "mydock:widget-pref:";
 const SAVE_DEBOUNCE_MS = 500;
@@ -54,7 +55,7 @@ function readCachedState(): DashboardStatePayload {
 function readCachedLayout(): WidgetInstance[] {
   try {
     const raw = window.localStorage.getItem(LAYOUT_KEY);
-    if (!raw) return slotIdsToInstances(readDefaultSlotIds(), readWidgetPrefs());
+    if (!raw) return slotIdsToInstances(readLegacySlotIds(), readWidgetPrefs());
 
     const parsed = JSON.parse(raw) as unknown;
     if (!Array.isArray(parsed)) return defaultInstances();
@@ -72,7 +73,30 @@ function readCachedLayout(): WidgetInstance[] {
   }
 }
 
-function readDefaultSlotIds(): SlotId[] {
+/**
+ * Slot ids to seed from when no v2 layout exists. Honors the pre-v2
+ * `mydock:widget-order:v1` key (an order-only array over the full default set)
+ * so a user who hasn't loaded the app since the v1 era keeps their saved order
+ * instead of having DEFAULT_LAYOUT seeded over it. Falls back to DEFAULT_LAYOUT.
+ */
+function readLegacySlotIds(): SlotId[] {
+  try {
+    const v1 = window.localStorage.getItem(LAYOUT_V1_KEY);
+    if (v1) {
+      const parsed = JSON.parse(v1) as unknown;
+      if (Array.isArray(parsed)) {
+        const seen = new Set<SlotId>();
+        for (const id of parsed) {
+          if (typeof id === "string" && isSlotId(id)) seen.add(id);
+        }
+        // v1 was order-only over the full set; back-fill any missing defaults.
+        const ordered = [...seen, ...DEFAULT_LAYOUT.filter((id) => !seen.has(id))];
+        if (ordered.length > 0) return ordered;
+      }
+    }
+  } catch {
+    // Unreadable v1 — fall through to defaults.
+  }
   return [...DEFAULT_LAYOUT];
 }
 
