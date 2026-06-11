@@ -1,9 +1,11 @@
 "use client";
 
+import { useState } from "react";
 import { Plus } from "lucide-react";
 
 import { ProviderIcon } from "@/components/widgets/provider-icon";
 import { ConnectionRow } from "@/components/connections/connection-row";
+import { LinearConnectDialog } from "@/components/connections/linear-connect-dialog";
 import type {
   ConnectionRecord,
   ConnectionsByProvider,
@@ -14,6 +16,8 @@ export function ConnectionsList({
 }: {
   connections: ConnectionsByProvider;
 }) {
+  const [linearOpen, setLinearOpen] = useState(false);
+
   return (
     <div className="grid gap-6">
       {/* ── Google group ─────────────────────────────────────────── */}
@@ -34,10 +38,10 @@ export function ConnectionsList({
         title="Linear"
         connections={connections.linear}
         addLabel="Connect a Linear workspace"
-        onAdd={() => {
-          // Linear connect dialog wired in Task 7
-        }}
+        onAdd={() => setLinearOpen(true)}
       />
+
+      <LinearConnectDialog open={linearOpen} onOpenChange={setLinearOpen} />
     </div>
   );
 }

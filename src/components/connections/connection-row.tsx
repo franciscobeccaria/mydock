@@ -53,7 +53,15 @@ export function ConnectionRow({ connection }: { connection: ConnectionRecord }) 
         "/api/integrations/google/start?next=/connections";
       return;
     }
-    // Linear reconnect re-opens the paste-key dialog — wired in Task 7.
+    // Linear has no per-row reconnect: re-pasting a key via the group's
+    // "Connect a Linear workspace" button upserts the same workspace.
+  }
+
+  // Reconnect is only meaningful for Google (OAuth re-auth). For Linear it is a
+  // no-op — see the comment above; we leave the menu item inert rather than add
+  // cross-component dialog plumbing.
+  function reconnectDisabled() {
+    return connection.provider === "linear";
   }
 
   return (
@@ -85,7 +93,9 @@ export function ConnectionRow({ connection }: { connection: ConnectionRecord }) 
             <MoreHorizontal className="size-4" />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={reconnect}>Reconnect</DropdownMenuItem>
+            <DropdownMenuItem onClick={reconnect} disabled={reconnectDisabled()}>
+              Reconnect
+            </DropdownMenuItem>
             {!connection.isDefault ? (
               <DropdownMenuItem onClick={setDefault} disabled={busy}>
                 Set as default
