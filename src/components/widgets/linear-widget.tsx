@@ -1,9 +1,8 @@
 "use client";
 
 import { format } from "date-fns";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
-import { useWidgetPreference } from "@/components/dashboard/use-widget-preference";
 import { WidgetCard } from "@/components/widgets/widget-card";
 import { WidgetEmptyState } from "@/components/widgets/widget-empty-state";
 import { WidgetErrorState } from "@/components/widgets/widget-error-state";
@@ -106,7 +105,13 @@ function LinearIssueRow({ item }: { item: WidgetItem }) {
   );
 }
 
-export function LinearWidget({ payload, onRetry, isRetrying }: WidgetProps) {
+export function LinearWidget({
+  payload,
+  onRetry,
+  isRetrying,
+  configValue,
+  onConfigChange,
+}: WidgetProps) {
   const projectOptions = useMemo(() => {
     const uniqueProjects = Array.from(
       new Set(
@@ -119,7 +124,11 @@ export function LinearWidget({ payload, onRetry, isRetrying }: WidgetProps) {
     return ["all_projects", ...uniqueProjects];
   }, [payload.items]);
 
-  const [project, setProject] = useWidgetPreference("linear-project", "all_projects");
+  // The grid owns the project filter so it persists per instance; fall back to
+  // local state when rendered standalone (e.g. previews).
+  const [localProject, setLocalProject] = useState("all_projects");
+  const project = configValue ?? localProject;
+  const setProject = onConfigChange ?? setLocalProject;
 
   const items = useMemo(() => {
     // A persisted project may no longer exist (renamed/removed) — fall back to all.

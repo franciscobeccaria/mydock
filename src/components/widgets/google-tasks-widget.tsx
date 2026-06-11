@@ -2,9 +2,8 @@
 
 import { format } from "date-fns";
 import { Circle } from "lucide-react";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
-import { useWidgetPreference } from "@/components/dashboard/use-widget-preference";
 import { WidgetCard } from "@/components/widgets/widget-card";
 import { WidgetEmptyState } from "@/components/widgets/widget-empty-state";
 import { WidgetErrorState } from "@/components/widgets/widget-error-state";
@@ -27,7 +26,13 @@ import type { WidgetProps } from "@/features/integrations/types";
 // exposes no starred status, so such a filter could only ever show wrong data.
 const ALL = "all";
 
-export function GoogleTasksWidget({ payload, onRetry, isRetrying }: WidgetProps) {
+export function GoogleTasksWidget({
+  payload,
+  onRetry,
+  isRetrying,
+  configValue,
+  onConfigChange,
+}: WidgetProps) {
   // The list names are already carried on each task by the adapter, so the
   // per-list filter is derived client-side (mirrors the Linear widget).
   const listOptions = useMemo(
@@ -42,7 +47,11 @@ export function GoogleTasksWidget({ payload, onRetry, isRetrying }: WidgetProps)
     [payload.items],
   );
 
-  const [viewPref, setView] = useWidgetPreference("tasks-view", ALL);
+  // The grid owns the list filter so it persists per instance; fall back to
+  // local state when rendered standalone (e.g. previews).
+  const [localView, setLocalView] = useState(ALL);
+  const viewPref = configValue ?? localView;
+  const setView = onConfigChange ?? setLocalView;
   // A persisted list may no longer exist (renamed/removed) — fall back to all.
   const view = viewPref === ALL || listOptions.includes(viewPref) ? viewPref : ALL;
 

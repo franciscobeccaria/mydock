@@ -65,9 +65,14 @@ export type WidgetProps = {
   /** Re-fetch this widget's data — wired to the error state's "Try again" action. */
   onRetry?: () => void;
   isRetrying?: boolean;
-  /** Gmail: which list to show. Lifted to the grid so it can key the per-view fetch. */
-  view?: "all" | "unread";
-  onViewChange?: (view: string) => void;
+  /**
+   * Per-instance config for widgets with a header control (Gmail view, Tasks
+   * list, Linear project). Lifted to the grid so it can key the per-config fetch
+   * and persist it to the instance. When absent, the widget uses its own default
+   * (standalone previews).
+   */
+  configValue?: string;
+  onConfigChange?: (value: string) => void;
 };
 
 export type TodaySummary = {

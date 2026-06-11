@@ -144,15 +144,35 @@ export function useDashboardState(): DashboardState {
     refetchOnWindowFocus: false,
   });
 
-  // Apply the server row once it arrives. On a null row, seed the server from the
-  // current (cached) state so a fresh user keeps their localStorage setup.
-  const seededRef = useRef(false);
+  // Debounced write-through. `scheduleSave` is given the exact value to send, so
+  // there's no need to mirror state into a ref during render.
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scheduleSave = useCallback((next: DashboardStatePayload) => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => {
+      void putServerState(next);
+    }, SAVE_DEBOUNCE_MS);
+  }, []);
+  useEffect(
+    () => () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    },
+    [],
+  );
+
+  // Reconcile once with the server when the query first resolves. This is the
+  // legitimate "sync an external system into React state" case: the server row
+  // is the source of truth, so it overwrites the cache-seeded initial state. A
+  // null row means a fresh user — seed the server from the cached state instead
+  // (a pure external write, no local state change). Guarded to run once.
+  const reconciledRef = useRef(false);
   useEffect(() => {
-    if (!query.isSuccess || seededRef.current) return;
-    seededRef.current = true;
+    if (!query.isSuccess || reconciledRef.current) return;
+    reconciledRef.current = true;
     if (query.data) {
-      setState(query.data);
       writeCache(query.data);
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time reconcile of server data into state
+      setState(query.data);
     } else {
       setState((current) => {
         void putServerState(current);
@@ -161,32 +181,15 @@ export function useDashboardState(): DashboardState {
     }
   }, [query.isSuccess, query.data]);
 
-  // Debounced write-through. The latest state is captured in a ref so the timer
-  // always sends the most recent value, even across rapid mutations.
-  const latestRef = useRef(state);
-  latestRef.current = state;
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const scheduleSave = useCallback(() => {
-    if (timerRef.current) clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(() => {
-      void putServerState(latestRef.current);
-    }, SAVE_DEBOUNCE_MS);
-  }, []);
-
-  useEffect(() => () => {
-    if (timerRef.current) clearTimeout(timerRef.current);
-  }, []);
-
   const setLayout = useCallback<DashboardState["setLayout"]>(
     (next) => {
       setState((current) => {
         const layout = typeof next === "function" ? next(current.layout) : next;
         const updated = { ...current, layout };
         writeCache(updated);
+        scheduleSave(updated);
         return updated;
       });
-      scheduleSave();
     },
     [scheduleSave],
   );
@@ -197,9 +200,9 @@ export function useDashboardState(): DashboardState {
         const shortcuts = typeof next === "function" ? next(current.shortcuts) : next;
         const updated = { ...current, shortcuts };
         writeCache(updated);
+        scheduleSave(updated);
         return updated;
       });
-      scheduleSave();
     },
     [scheduleSave],
   );
