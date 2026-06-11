@@ -27,59 +27,20 @@ import { ShortcutsRow } from "@/components/dashboard/shortcuts-row";
 import { useDashboardLayout } from "@/components/dashboard/use-dashboard-layout";
 import { DashboardStateProvider } from "@/components/dashboard/use-dashboard-state";
 import { type WidgetInstance } from "@/components/dashboard/widget-instance";
-import { CalendarMonthGridWidget } from "@/components/widgets/calendar-month-grid-widget";
-import { CalendarTodayAgendaWidget } from "@/components/widgets/calendar-today-agenda-widget";
-import { CalendarUpcomingWeekWidget } from "@/components/widgets/calendar-upcoming-week-widget";
-import { GmailWidget } from "@/components/widgets/gmail-widget";
-import { GoogleTasksWidget } from "@/components/widgets/google-tasks-widget";
-import { deriveLinearAssignedUrl, LinearWidget } from "@/components/widgets/linear-widget";
+import { deriveLinearAssignedUrl } from "@/components/widgets/linear-widget";
 import { WidgetCatalogDialog, type WidgetAccount } from "@/components/widgets/widget-catalog-dialog";
-import { CATALOG_BY_ID, type SlotId } from "@/components/widgets/widget-catalog";
+import { CATALOG_BY_ID } from "@/components/widgets/widget-catalog";
+import {
+  CONFIG_KEY,
+  fetchWidget,
+  getWidgetPayload,
+  renderWidget,
+  WIDGET_TITLE,
+  widgetQueryKey,
+  widgetStaleTime,
+} from "@/components/widgets/widget-render";
 import { cn } from "@/lib/utils";
-import { type Provider, type WidgetPayload } from "@/features/integrations/types";
-
-function makeLoadingPayload(provider: Provider, title: string): WidgetPayload {
-  return {
-    provider,
-    title,
-    state: "loading",
-    items: [],
-    isMock: provider === "linear",
-    connectionStatus: "disconnected",
-    lastUpdatedAt: new Date().toISOString(),
-    requiredScopes: [],
-    grantedScopes: [],
-    missingScopes: [],
-    needsConsent: false,
-    accountEmail: null,
-  };
-}
-
-async function fetchWidget(provider: Provider, view?: string) {
-  const url = view
-    ? `/api/widgets/${provider}?view=${encodeURIComponent(view)}`
-    : `/api/widgets/${provider}`;
-  const response = await fetch(url, { cache: "no-store" });
-  if (!response.ok) throw new Error(`Failed to load ${provider}.`);
-  return (await response.json()) as WidgetPayload;
-}
-
-function getWidgetPayload(
-  provider: Provider,
-  title: string,
-  data: WidgetPayload | undefined,
-  error: Error | null,
-): WidgetPayload {
-  if (data) return data;
-  if (error) {
-    return {
-      ...makeLoadingPayload(provider, title),
-      state: "error" as const,
-      error: `We couldn't load ${title} right now.`,
-    };
-  }
-  return makeLoadingPayload(provider, title);
-}
+import { type WidgetPayload } from "@/features/integrations/types";
 
 const INTERACTIVE =
   'a,button,input,textarea,select,[role="button"],[role="option"],[role="listbox"],[data-slot="select-trigger"],[data-interactive="true"]';
@@ -208,13 +169,6 @@ function SortableWidget({
   );
 }
 
-/** The config key each configurable slot reads/writes on its instance. */
-const CONFIG_KEY: Partial<Record<SlotId, string>> = {
-  gmail: "gmail-view",
-  google_tasks: "tasks-view",
-  linear: "linear-project",
-};
-
 /**
  * Renders one widget instance and owns its data query. Each instance queries
  * independently, keyed by its slot + config, so two instances of the same widget
@@ -246,16 +200,9 @@ function InstanceWidget({
   // be threaded into both the query key and fetchWidget, or two instances on
   // different accounts will collapse into one cache entry.
   const query = useQuery({
-    queryKey:
-      slotId === "gmail"
-        ? ["integrations", "gmail", "emails", gmailView]
-        : provider === "google_calendar"
-          ? ["integrations", "calendar", "events"]
-          : provider === "google_tasks"
-            ? ["integrations", "tasks"]
-            : ["integrations", "linear", "issues"],
+    queryKey: widgetQueryKey(slotId, gmailView),
     queryFn: () => fetchWidget(provider, gmailView),
-    staleTime: provider === "linear" ? 5 * 60_000 : provider === "google_tasks" ? 2 * 60_000 : 60_000,
+    staleTime: widgetStaleTime(provider),
     gcTime: 15 * 60_000,
   });
 
@@ -263,66 +210,36 @@ function InstanceWidget({
     onLoaded?.(query.data);
   }, [onLoaded, query.data]);
 
-  const shared = {
+  return renderWidget(slotId, getWidgetPayload(provider, WIDGET_TITLE[slotId], query.data, query.error), {
     onRetry: () => query.refetch(),
     isRetrying: query.isFetching,
     configValue,
     onConfigChange: setConfig,
-  };
-
-  switch (slotId) {
-    case "linear":
-      return (
-        <LinearWidget
-          payload={getWidgetPayload("linear", "Linear", query.data, query.error)}
-          {...shared}
-        />
-      );
-    case "gmail":
-      return (
-        <GmailWidget
-          payload={getWidgetPayload("gmail", "Gmail", query.data, query.error)}
-          {...shared}
-        />
-      );
-    case "google_tasks":
-      return (
-        <GoogleTasksWidget
-          payload={getWidgetPayload("google_tasks", "Tasks", query.data, query.error)}
-          {...shared}
-        />
-      );
-    case "calendar_today":
-      return (
-        <CalendarTodayAgendaWidget
-          payload={getWidgetPayload("google_calendar", "Calendar", query.data, query.error)}
-          {...shared}
-        />
-      );
-    case "calendar_upcoming":
-      return (
-        <CalendarUpcomingWeekWidget
-          payload={getWidgetPayload("google_calendar", "Upcoming week", query.data, query.error)}
-          {...shared}
-        />
-      );
-    case "calendar_month":
-      return (
-        <CalendarMonthGridWidget
-          payload={getWidgetPayload("google_calendar", "Calendar", query.data, query.error)}
-          {...shared}
-        />
-      );
-  }
+  });
 }
 
-function WidgetGrid({ accountEmail }: { accountEmail: string | null }) {
+function WidgetGrid({
+  accountEmail,
+  accountName,
+  accountAvatarUrl,
+}: {
+  accountEmail: string | null;
+  accountName: string | null;
+  accountAvatarUrl: string | null;
+}) {
   const router = useRouter();
   const { isEditing } = useDashboardMode();
 
   // Until FRA-138's multi-account connect flow lands, the only account is the
   // login account, recorded as the default (accountId `null`).
-  const accounts: WidgetAccount[] = [{ id: null, label: accountEmail ?? "Default account" }];
+  const accounts: WidgetAccount[] = [
+    {
+      id: null,
+      label: accountEmail ?? "Default account",
+      name: accountName ?? accountEmail,
+      avatarUrl: accountAvatarUrl,
+    },
+  ];
 
   // Active instances, order, add/remove/config all live in the layout hook, now
   // backed by per-user Supabase state (with a localStorage cache).
@@ -372,6 +289,14 @@ function WidgetGrid({ accountEmail }: { accountEmail: string | null }) {
       />
     );
   }
+
+  // How many widget instances each app currently has on the dashboard, so the
+  // catalog can show a subtle "N added" badge per app section.
+  const addedByApp = layout.reduce<Record<string, number>>((acc, instance) => {
+    const appId = CATALOG_BY_ID[instance.slotId].appId;
+    acc[appId] = (acc[appId] ?? 0) + 1;
+    return acc;
+  }, {});
 
   const gridClassName = "grid grid-cols-1 gap-4 lg:grid-cols-2";
 
@@ -429,6 +354,7 @@ function WidgetGrid({ accountEmail }: { accountEmail: string | null }) {
         open={catalogOpen}
         onOpenChange={setCatalogOpen}
         accounts={accounts}
+        addedByApp={addedByApp}
         onAdd={addWidget}
       />
     </>
@@ -441,14 +367,22 @@ function WidgetGrid({ accountEmail }: { accountEmail: string | null }) {
  */
 export default function WidgetGridWithState({
   accountEmail,
+  accountName,
+  accountAvatarUrl,
   userId,
 }: {
   accountEmail: string | null;
+  accountName: string | null;
+  accountAvatarUrl: string | null;
   userId: string | null;
 }) {
   return (
     <DashboardStateProvider userId={userId}>
-      <WidgetGrid accountEmail={accountEmail} />
+      <WidgetGrid
+        accountEmail={accountEmail}
+        accountName={accountName}
+        accountAvatarUrl={accountAvatarUrl}
+      />
     </DashboardStateProvider>
   );
 }

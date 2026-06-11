@@ -110,8 +110,8 @@ export function isSlotId(value: string): value is SlotId {
   return value in CATALOG_BY_ID;
 }
 
-// Catalog grouped by app, preserving the order each app first appears in
-// WIDGET_CATALOG. The dialog renders one section per group.
+// Catalog grouped by app, sorted alphabetically by app label. The dialog renders
+// one section per group; widgets within a group keep their WIDGET_CATALOG order.
 export const APP_GROUPS: AppGroup[] = (() => {
   const groups = new Map<AppId, AppGroup>();
   for (const widget of WIDGET_CATALOG) {
@@ -128,5 +128,5 @@ export const APP_GROUPS: AppGroup[] = (() => {
     }
     group.widgets.push(widget);
   }
-  return [...groups.values()];
+  return [...groups.values()].sort((a, b) => a.label.localeCompare(b.label));
 })();
