@@ -21,7 +21,7 @@ const searchSchema = z.object({
     ])
     .optional(),
   view: z.enum(["all", "unread"]).optional(),
-  accountId: z.string().optional(),
+  accountId: z.string().uuid().optional(),
 });
 
 export async function GET(
