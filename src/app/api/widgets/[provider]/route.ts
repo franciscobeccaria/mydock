@@ -21,6 +21,7 @@ const searchSchema = z.object({
     ])
     .optional(),
   view: z.enum(["all", "unread"]).optional(),
+  accountId: z.string().optional(),
 });
 
 export async function GET(
@@ -46,6 +47,7 @@ export async function GET(
   const parsedSearch = searchSchema.safeParse({
     previewState: request.nextUrl.searchParams.get("previewState") ?? undefined,
     view: request.nextUrl.searchParams.get("view") ?? undefined,
+    accountId: request.nextUrl.searchParams.get("accountId") ?? undefined,
   });
 
   if (!parsedParams.success || !parsedSearch.success) {
@@ -57,6 +59,7 @@ export async function GET(
     user.id,
     parsedSearch.data.previewState,
     parsedSearch.data.view,
+    parsedSearch.data.accountId,
   );
 
   return NextResponse.json(payload);

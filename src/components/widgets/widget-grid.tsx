@@ -194,14 +194,10 @@ function InstanceWidget({
   // Gmail's view is a server-side query param; key it so All/Unread fetch apart.
   const gmailView = slotId === "gmail" ? configValue ?? "all" : undefined;
 
-  // NOTE: queries are keyed by slot + config but NOT by accountId. Today every
-  // instance binds to the single login account (accountId === null), so the data
-  // is identical regardless. When FRA-138 adds real multi-account, accountId must
-  // be threaded into both the query key and fetchWidget, or two instances on
-  // different accounts will collapse into one cache entry.
+  // Keyed by accountId so two instances on different connections cache apart.
   const query = useQuery({
-    queryKey: widgetQueryKey(slotId, gmailView),
-    queryFn: () => fetchWidget(provider, gmailView),
+    queryKey: widgetQueryKey(slotId, gmailView, instance.accountId),
+    queryFn: () => fetchWidget(provider, gmailView, instance.accountId),
     staleTime: widgetStaleTime(provider),
     gcTime: 15 * 60_000,
   });

@@ -257,6 +257,7 @@ export async function getWidgetPayload(
   userId: string,
   previewState?: WidgetViewState,
   view?: GmailView,
+  accountId?: string | null,
 ): Promise<WidgetPayload> {
   const statusRecords = await getIntegrationStatusRecords(userId);
   const statusRecord = statusRecords.find((record) => record.provider === provider);
@@ -267,7 +268,7 @@ export async function getWidgetPayload(
 
   try {
     if (provider === "gmail") {
-      const { items, unreadCount } = await getGmailItems(userId, view);
+      const { items, unreadCount } = await getGmailItems(userId, view, accountId);
       return buildWidgetPayload(provider, statusRecord, items, false, previewState, {
         unreadCount,
       });
@@ -275,10 +276,10 @@ export async function getWidgetPayload(
 
     const items =
       provider === "linear"
-        ? await getLinearItems(userId)
+        ? await getLinearItems(userId, accountId)
         : provider === "google_tasks"
-          ? await getGoogleTaskItems(userId)
-          : await getGoogleCalendarItems(userId);
+          ? await getGoogleTaskItems(userId, accountId)
+          : await getGoogleCalendarItems(userId, accountId);
 
     return buildWidgetPayload(
       provider,
