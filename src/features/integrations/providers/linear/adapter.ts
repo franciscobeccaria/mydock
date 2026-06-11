@@ -53,7 +53,10 @@ const STATE_TYPE_RANK: Record<string, number> = {
   canceled: 0,
 };
 
-export async function getLinearItems(userId: string): Promise<WidgetItem[]> {
+export async function getLinearItems(
+  userId: string,
+  accountId?: string | null,
+): Promise<WidgetItem[]> {
   const data = await linearGraphqlFetch<LinearAssignedIssuesResponse>(
     userId,
     `
@@ -90,6 +93,8 @@ export async function getLinearItems(userId: string): Promise<WidgetItem[]> {
         }
       }
     `,
+    undefined,
+    accountId,
   );
 
   return (data.viewer.assignedIssues.nodes ?? [])
