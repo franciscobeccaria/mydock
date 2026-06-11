@@ -1,30 +1,12 @@
 import { redirect } from "next/navigation";
-import { CalendarRange, Mail, PanelsTopLeft, Sparkles } from "lucide-react";
+import Link from "next/link";
+import { ArrowRight } from "lucide-react";
 
-import { LoginForm } from "@/components/auth/login-form";
-import { PageContainer } from "@/components/layout/page-container";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { isSupabaseConfigured } from "@/lib/env";
 import { createClient } from "@/lib/supabase/server";
-
-const featureList = [
-  {
-    icon: <PanelsTopLeft className="size-5" />,
-    title: "One calm workspace",
-    description: "Keep your most important updates in a single desktop view.",
-  },
-  {
-    icon: <Mail className="size-5" />,
-    title: "Inbox + tasks together",
-    description: "See messages, tasks, and your next events without tab hopping.",
-  },
-  {
-    icon: <CalendarRange className="size-5" />,
-    title: "Built for your day",
-    description: "Start with the highlights that matter right now.",
-  },
-];
+import { cn } from "@/lib/utils";
 
 export default async function LoginPage({
   searchParams,
@@ -53,62 +35,42 @@ export default async function LoginPage({
         : undefined;
 
   return (
-    <PageContainer className="flex min-h-screen items-center py-12">
-      <div className="grid w-full gap-8 lg:grid-cols-[1.1fr_0.9fr] lg:items-center">
-        <div className="space-y-6">
-          <Badge variant="outline" className="rounded-full px-3 py-1 text-xs font-medium">
-            Google-first workspace
-          </Badge>
-          <div className="space-y-4">
-            <h1 className="max-w-xl text-4xl font-semibold tracking-tight text-balance sm:text-5xl">
-              Bring your inbox, calendar, tasks, and focus into one place.
-            </h1>
-            <p className="text-muted-foreground max-w-2xl text-lg">
-              MyDock turns the tools you already use into a calm daily workspace built for a big screen.
-            </p>
-          </div>
-          <div className="grid gap-4 sm:grid-cols-3">
-            {featureList.map((feature) => (
-              <div key={feature.title} className="border-border/70 bg-card/80 rounded-3xl border p-5 shadow-sm">
-                <div className="bg-accent text-foreground mb-3 inline-flex size-10 items-center justify-center rounded-2xl">
-                  {feature.icon}
-                </div>
-                <h3 className="font-medium">{feature.title}</h3>
-                <p className="text-muted-foreground mt-2 text-sm">{feature.description}</p>
-              </div>
-            ))}
-          </div>
+    <main className="flex min-h-screen flex-col items-center justify-center gap-8 px-4">
+      <div className="flex items-center gap-2">
+        <div className="bg-primary text-primary-foreground flex size-9 shrink-0 items-center justify-center rounded-md text-base font-bold">
+          M
         </div>
-
-        <Card className="border-border/70 shadow-xl shadow-black/5">
-          <CardContent className="space-y-6 p-8">
-            <div>
-              <p className="text-muted-foreground text-sm font-medium tracking-[0.18em] uppercase">
-                Sign in to MyDock
-              </p>
-              <h2 className="mt-2 text-2xl font-semibold tracking-tight">
-                Continue with your Google account
-              </h2>
-              <p className="text-muted-foreground mt-2 text-sm">
-                Sign in once and choose the Google tools you want to bring into your workspace.
-              </p>
-            </div>
-
-            <LoginForm isConfigured={isSupabaseConfigured} message={message} />
-
-            <div className="bg-accent/30 rounded-2xl p-4 text-sm">
-              <div className="text-foreground flex items-center gap-2 font-medium">
-                <Sparkles className="size-4" /> What you&apos;ll see first
-              </div>
-              <ul className="text-muted-foreground mt-3 space-y-2">
-                <li>Your top inbox signals</li>
-                <li>Upcoming events and tasks</li>
-                <li>A clean dashboard you can scan in seconds</li>
-              </ul>
-            </div>
-          </CardContent>
-        </Card>
+        <span className="text-lg font-semibold tracking-tight">MyDock</span>
       </div>
-    </PageContainer>
+
+      <div className="w-full max-w-sm space-y-4">
+        {!isSupabaseConfigured ? (
+          <Alert>
+            <AlertTitle>Sign in is temporarily unavailable</AlertTitle>
+            <AlertDescription>Please try again in a few minutes.</AlertDescription>
+          </Alert>
+        ) : null}
+
+        {message ? (
+          <Alert>
+            <AlertTitle>We couldn&apos;t finish that</AlertTitle>
+            <AlertDescription>{message}</AlertDescription>
+          </Alert>
+        ) : null}
+
+        {isSupabaseConfigured ? (
+          <Link
+            href="/api/integrations/google/start?next=/dashboard"
+            className={cn(buttonVariants({ size: "lg" }), "w-full")}
+          >
+            Continue with Google <ArrowRight className="ml-2 size-4" />
+          </Link>
+        ) : (
+          <Button className="w-full" size="lg" disabled>
+            Continue with Google
+          </Button>
+        )}
+      </div>
+    </main>
   );
 }
