@@ -15,27 +15,36 @@ import type { ConnectionRecord } from "@/features/connections/queries";
 export function ConnectionRow({ connection }: { connection: ConnectionRecord }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  async function setDefault() {
-    if (busy || connection.isDefault) return;
+  // PATCH = set default, DELETE = disconnect. Only refresh on success so a failed
+  // mutation doesn't silently re-render unchanged as if it had worked.
+  async function mutate(method: "PATCH" | "DELETE") {
+    if (busy) return;
     setBusy(true);
+    setError(null);
     try {
-      await fetch(`/api/connections/${connection.id}`, { method: "PATCH" });
+      const res = await fetch(`/api/connections/${connection.id}`, { method });
+      if (!res.ok) {
+        setError(method === "DELETE" ? "Couldn't disconnect." : "Couldn't set as default.");
+        return;
+      }
       router.refresh();
+    } catch {
+      setError("Something went wrong. Try again.");
     } finally {
       setBusy(false);
     }
   }
 
-  async function disconnect() {
-    if (busy || connection.isDefault) return;
-    setBusy(true);
-    try {
-      await fetch(`/api/connections/${connection.id}`, { method: "DELETE" });
-      router.refresh();
-    } finally {
-      setBusy(false);
-    }
+  function setDefault() {
+    if (connection.isDefault) return;
+    void mutate("PATCH");
+  }
+
+  function disconnect() {
+    if (connection.isDefault) return;
+    void mutate("DELETE");
   }
 
   function reconnect() {
@@ -60,6 +69,7 @@ export function ConnectionRow({ connection }: { connection: ConnectionRecord }) 
             </span>
           ) : null}
         </div>
+        {error ? <p className="mt-1 text-xs text-[#DC2626]">{error}</p> : null}
       </div>
 
       <div className="flex items-center gap-3">
