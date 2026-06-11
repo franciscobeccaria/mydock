@@ -5,8 +5,8 @@ const LINEAR_GRAPHQL = "https://api.linear.app/graphql";
 
 /**
  * Resolves the pasted Linear personal API key for a specific connection.
- * If accountId is omitted, falls back to the user's first linear connection.
- * Personal keys are static — no refresh.
+ * If accountId is omitted, falls back to the user's default linear connection
+ * (is_default first, then oldest by created_at). Personal keys are static — no refresh.
  */
 async function resolveLinearKey(userId: string, accountId?: string | null): Promise<string> {
   const serviceClient = createServiceRoleClient();
@@ -18,7 +18,9 @@ async function resolveLinearKey(userId: string, accountId?: string | null): Prom
     .eq("user_id", userId)
     .eq("provider", "linear");
 
-  query = accountId ? query.eq("id", accountId) : query.order("created_at", { ascending: true });
+  query = accountId
+    ? query.eq("id", accountId)
+    : query.order("is_default", { ascending: false }).order("created_at", { ascending: true });
 
   const result = await query.limit(1).maybeSingle();
 

@@ -60,6 +60,11 @@ export async function storeLinearConnection({
   const serviceClient = createServiceRoleClient();
   if (!serviceClient) throw new Error("Connection storage is unavailable on the server.");
 
+  const encryptedKey = encryptSecret(apiKey);
+  if (!encryptedKey) {
+    throw new Error("Token encryption is not configured on the server.");
+  }
+
   const now = new Date().toISOString();
 
   const accountResult = await serviceClient
@@ -71,7 +76,7 @@ export async function storeLinearConnection({
         provider_account_id: identity.userId,
         provider_account_email: identity.email,
         scopes: ["read"],
-        access_token_encrypted: encryptSecret(apiKey),
+        access_token_encrypted: encryptedKey,
         refresh_token_encrypted: null,
         token_expires_at: null,
         updated_at: now,
