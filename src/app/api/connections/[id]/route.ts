@@ -30,7 +30,7 @@ export async function DELETE(_req: NextRequest, ctx: { params: Promise<{ id: str
     return NextResponse.json({ error: "default_not_removable" }, { status: 409 });
 
   const del = await service.from("integration_accounts").delete().eq("user_id", userId).eq("id", id);
-  if (del.error) return NextResponse.json({ error: del.error.message }, { status: 500 });
+  if (del.error) return NextResponse.json({ error: "delete_failed" }, { status: 500 });
   return NextResponse.json({ ok: true });
 }
 
@@ -52,17 +52,24 @@ export async function PATCH(_req: NextRequest, ctx: { params: Promise<{ id: stri
   if (target.error || !target.data)
     return NextResponse.json({ error: "not_found" }, { status: 404 });
 
-  // Clear the old default for this provider, set the new one.
-  await service
-    .from("integration_accounts")
-    .update({ is_default: false })
-    .eq("user_id", userId)
-    .eq("provider", target.data.provider);
+  // Set the new default first, then clear the others for this provider. Done in
+  // this order (not the reverse) so a failure between the two statements leaves
+  // two defaults — benign and recoverable — rather than zero, which would break
+  // token resolution. Not transactional; fine for this low-concurrency app.
   const set = await service
     .from("integration_accounts")
     .update({ is_default: true })
     .eq("user_id", userId)
     .eq("id", id);
-  if (set.error) return NextResponse.json({ error: set.error.message }, { status: 500 });
+  if (set.error) return NextResponse.json({ error: "update_failed" }, { status: 500 });
+
+  const clear = await service
+    .from("integration_accounts")
+    .update({ is_default: false })
+    .eq("user_id", userId)
+    .eq("provider", target.data.provider)
+    .neq("id", id);
+  if (clear.error) return NextResponse.json({ error: "update_failed" }, { status: 500 });
+
   return NextResponse.json({ ok: true });
 }

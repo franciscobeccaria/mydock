@@ -15,7 +15,12 @@ export async function POST(request: NextRequest) {
   const identity = await validateLinearKey(apiKey);
   if (!identity) return NextResponse.json({ error: "invalid_key" }, { status: 422 });
 
-  await storeLinearConnection({ userId: user.id, apiKey, identity });
+  try {
+    await storeLinearConnection({ userId: user.id, apiKey, identity });
+  } catch {
+    return NextResponse.json({ error: "store_failed" }, { status: 500 });
+  }
+
   return NextResponse.json({
     ok: true,
     email: identity.email,

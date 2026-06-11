@@ -65,6 +65,16 @@ export async function storeLinearConnection({
     throw new Error("Token encryption is not configured on the server.");
   }
 
+  // First connection for this provider becomes the default (so token resolution
+  // always has a default to fall back to). Subsequent connections don't.
+  const existing = await serviceClient
+    .from("integration_accounts")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("provider", "linear")
+    .limit(1);
+  const isFirst = !existing.data || existing.data.length === 0;
+
   const now = new Date().toISOString();
 
   const accountResult = await serviceClient
@@ -73,6 +83,7 @@ export async function storeLinearConnection({
       {
         user_id: userId,
         provider: "linear",
+        is_default: isFirst,
         provider_account_id: identity.userId,
         provider_account_email: identity.email,
         scopes: ["read"],
