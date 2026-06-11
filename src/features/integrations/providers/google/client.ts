@@ -31,6 +31,8 @@ async function getGoogleTokensFromCookies() {
   };
 }
 
+// accountId omitted → the user's default Google connection (is_default first,
+// then oldest by created_at). Mirrors resolveLinearKey's selection.
 async function getGoogleAccountRow(userId: string, accountId?: string | null) {
   const serviceClient = createServiceRoleClient();
 
