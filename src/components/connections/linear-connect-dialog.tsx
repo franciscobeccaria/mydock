@@ -26,6 +26,8 @@ export function LinearConnectDialog({
   const [key, setKey] = useState("");
   const [reveal, setReveal] = useState(false);
   const [state, setState] = useState<"idle" | "verifying" | "ok" | "error">("idle");
+  // Distinguish a bad key (422) from a server failure (500): the messages differ.
+  const [errorKind, setErrorKind] = useState<"key" | "server">("key");
   const [result, setResult] = useState<{
     email: string | null;
     workspaceName: string | null;
@@ -50,9 +52,11 @@ export function LinearConnectDialog({
         setState("ok");
         router.refresh(); // re-fetch the server page's connection list
       } else {
+        setErrorKind(res.status === 500 ? "server" : "key");
         setState("error");
       }
     } catch {
+      setErrorKind("server");
       setState("error");
     }
   }
@@ -62,6 +66,7 @@ export function LinearConnectDialog({
       setKey("");
       setReveal(false);
       setState("idle");
+      setErrorKind("key");
       setResult(null);
     }
     onOpenChange(next);
@@ -111,6 +116,8 @@ export function LinearConnectDialog({
               onChange={(e) => setKey(e.target.value)}
               placeholder="lin_api_..."
               className="pr-10"
+              autoComplete="off"
+              data-1p-ignore
               disabled={state === "verifying" || state === "ok"}
             />
             <button
@@ -141,17 +148,27 @@ export function LinearConnectDialog({
         ) : null}
         {state === "error" ? (
           <p className="text-sm text-[#DC2626]">
-            That key didn&rsquo;t work. Check it and try again.
+            {errorKind === "server"
+              ? "Something went wrong on our end. Please try again."
+              : "That key didn’t work. Check it and try again."}
           </p>
         ) : null}
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => handleOpenChange(false)}>
-            Cancel
-          </Button>
-          <Button onClick={submit} disabled={state === "verifying" || state === "ok"}>
-            Connect workspace
-          </Button>
+          {state === "ok" ? (
+            // Connected — the only action left is to close (the new row is already
+            // in the refreshed list behind the dialog).
+            <Button onClick={() => handleOpenChange(false)}>Done</Button>
+          ) : (
+            <>
+              <Button variant="outline" onClick={() => handleOpenChange(false)}>
+                Cancel
+              </Button>
+              <Button onClick={submit} disabled={state === "verifying"}>
+                Connect workspace
+              </Button>
+            </>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>
