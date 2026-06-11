@@ -15,7 +15,7 @@ MyDock's instantiation of the shared journey from [harness-library](https://gith
 | 2. Research | **only when uncertainty exists** | Context7, official docs, web. Mandatory for upgrades (Next.js majors, Supabase changes) |
 | 3. Spec | normal | one spec file (see Artifacts) — no multi-file ceremony |
 | 4. Planning | light | plan lives inside the spec |
-| 5. Build | normal | feature branch named after the ticket, conventional commits with `(FRA-xxx)` |
+| 5. Build | normal | branch `<type>/fra-xxx-<slug>` (see Guardrails), conventional commits with `(FRA-xxx)` |
 | 6. Verification | **strong** | see Verification stack |
 | 6b. Manual QA checkpoint | UI-visible changes | agent prepares the handoff (running app, authed session, what-to-check list) and STOPS; Francisco's "go" releases the PR — TD Bank checkpoint pattern, agent-browser-assisted |
 | 7. PR | normal | PR description mirrors the spec (`.github/pull_request_template.md`); commits via `/commit-message`, no AI attribution |
@@ -48,14 +48,14 @@ Run before every PR:
 pnpm lint && pnpm typecheck && pnpm build
 ```
 
-- **agent-browser** is the default for verifying changes in the real authed app. Auth recipe (Supabase session mint + cookie injection, base-ui Select gotcha): [harness-library catalog → Recipes](https://github.com/franciscobeccaria/harness-library/blob/master/catalog/README.md#recipes--harness-how-tos-worth-keeping).
-- **Chrome DevTools MCP** for interactive debugging only.
+- **agent-browser is THE browser tool for verification** — the only default for driving the real authed app. It's leaner on tokens and carries the auth recipe (Supabase session mint + cookie injection, base-ui Select gotcha): [harness-library catalog → Recipes](https://github.com/franciscobeccaria/harness-library/blob/master/catalog/README.md#recipes--harness-how-tos-worth-keeping). Do not reach for it by naming — it's the routine default, like the stage-0 tools.
+- **Do not use Playwright MCP or Chrome DevTools MCP for verification.** They are exceptions, not the path: Chrome DevTools MCP for interactive debugging only; Playwright MCP only when agent-browser genuinely cannot do the job — and you must state the reason before using either.
 - Supabase changes: verify against local stack (`pnpm supabase:start` / `supabase:reset`); regenerate types with `pnpm supabase:types`.
 - Manual QA checkpoint: default for UI-visible changes, skippable for backend/logic-only work. The agent never runs automated browser QA unprompted — agent-browser gathers evidence and preps the authed session, then the agent stops and waits for Francisco's manual pass and "go" before the PR.
 
 ## Guardrails (medium)
 
-- Never commit to `main` directly; ticket-named branches.
+- Never commit to `main` directly. Branch naming: `<type>/fra-xxx-<slug>` where `<type>` is the Conventional Commit type (`feat` / `fix` / `chore` / …) and `<slug>` is a short kebab description — e.g. `feat/fra-144-login-redesign`, `chore/fra-160-harness-tweaks`. Do **not** use the Linear-suggested `gitBranchName` (it carries a `fbeccaria24/` owner prefix) — drop the prefix and lead with the type.
 - RLS on all user-owned tables is non-negotiable; `integration_tokens` never gets a client-facing select policy (see [architecture](./architecture.md)).
 - Secrets stay in `.env.local` / Vercel env — never in code or specs.
 - Read `node_modules/next/dist/docs/` before writing Next.js-API code (this Next version differs from training data — see `AGENTS.md`).

@@ -24,6 +24,6 @@ The harness is **self-contained**: skills and commands it depends on are vendore
 - **Manual QA checkpoint (UI-visible changes)**: after verification, STOP before the PR. Prepare the handoff — dev server running, authenticated agent-browser session if useful, and a short list of what to check. Francisco does the manual QA; his "go/done" releases the PR. Backend/logic-only changes can skip this checkpoint.
 - **Commits**: Conventional Commits with scope and ticket suffix — `feat(connections): … (FRA-138)` — in English, title ≤50 chars, body lines ≤72. Group by user-facing functionality first, technical notes in the body. The `/commit-message` command (vendored in `.claude/commands/`) generates these. **Never include AI attribution** — no "Generated with Claude", no tool Co-Authored-By trailers — in commits, PR descriptions, or comments.
 - **PR mirrors the spec** — the template in `.github/pull_request_template.md` does this; fill it with evidence, not promises.
-- **Guardrails**: ticket-named branches, never commit to `main` directly, RLS stays on, secrets never in code, no AI attribution anywhere.
+- **Guardrails**: branch as `<type>/fra-xxx-<slug>` (e.g. `feat/fra-144-login-redesign`; not the Linear `fbeccaria24/…` suggestion), never commit to `main` directly, RLS stays on, secrets never in code, no AI attribution anywhere.
 
 Architecture context: `docs/architecture.md` · integrations: `docs/integrations.md` · Supabase: `docs/supabase-setup.md`.
