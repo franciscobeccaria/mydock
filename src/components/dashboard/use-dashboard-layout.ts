@@ -1,100 +1,82 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo } from "react";
 
-import {
-  DEFAULT_LAYOUT,
-  WIDGET_CATALOG,
-  isSlotId,
-  type SlotId,
-  type WidgetCatalogEntry,
-} from "@/components/widgets/widget-catalog";
-
-const V2_KEY = "mydock:dashboard:v2";
-const V1_KEY = "mydock:widget-order:v1";
+import { useDashboardState } from "@/components/dashboard/use-dashboard-state";
+import { type WidgetInstance } from "@/components/dashboard/widget-instance";
+import { WIDGET_CATALOG, type SlotId, type WidgetCatalogEntry } from "@/components/widgets/widget-catalog";
 
 type UseDashboardLayout = {
-  /** Active widget ids, in display order. */
-  layout: SlotId[];
-  /** Catalog entries not currently on the dashboard. */
+  /** Placed widget instances, in display order. */
+  layout: WidgetInstance[];
+  /** Catalog entries (duplicates allowed, so every entry is always available). */
   availableToAdd: WidgetCatalogEntry[];
-  isActive: (id: SlotId) => boolean;
-  addWidget: (id: SlotId) => void;
-  removeWidget: (id: SlotId) => void;
-  reorder: (activeId: SlotId, overId: SlotId) => void;
+  /** Whether a slot has at least one instance on the dashboard. */
+  isActive: (slotId: SlotId) => boolean;
+  /** Add a new instance of a slot, bound to an account (`null` = default). */
+  addWidget: (slotId: SlotId, accountId?: string | null) => void;
+  removeWidget: (instanceId: string) => void;
+  reorder: (activeInstanceId: string, overInstanceId: string) => void;
+  /** Set a single per-instance config value. */
+  updateConfig: (instanceId: string, key: string, value: string) => void;
 };
 
-/** Keep only known ids and drop duplicates, preserving the given order. */
-function sanitize(ids: string[]): SlotId[] {
-  const seen = new Set<SlotId>();
-  for (const id of ids) {
-    if (isSlotId(id) && !seen.has(id)) seen.add(id);
-  }
-  return [...seen];
-}
-
-function readLayout(): SlotId[] {
-  if (typeof window === "undefined") return [...DEFAULT_LAYOUT];
-  try {
-    const v2 = window.localStorage.getItem(V2_KEY);
-    if (v2) return sanitize(JSON.parse(v2) as string[]);
-
-    // Migration: v1 stored the ORDER of the full default set (all six active).
-    const v1 = window.localStorage.getItem(V1_KEY);
-    if (v1) {
-      const migrated = sanitize(JSON.parse(v1) as string[]);
-      // v1 was order-only over the full set; back-fill any default ids missing
-      // from the saved order so a partial/old v1 still yields all six active.
-      const missing = DEFAULT_LAYOUT.filter((id) => !migrated.includes(id));
-      return [...migrated, ...missing];
-    }
-
-    return [...DEFAULT_LAYOUT];
-  } catch {
-    return [...DEFAULT_LAYOUT];
-  }
-}
-
 export function useDashboardLayout(): UseDashboardLayout {
-  // The grid is rendered client-only (ssr: false), so reading localStorage in
-  // the initializer is safe and avoids a setState-in-effect cascade.
-  const [layout, setLayout] = useState<SlotId[]>(() => readLayout());
+  const { layout, setLayout } = useDashboardState();
 
-  // Persist on every change (also writes the migrated value forward to v2).
-  useEffect(() => {
-    try {
-      localStorage.setItem(V2_KEY, JSON.stringify(layout));
-    } catch {
-      // Storage may be unavailable (private mode); state still works in-session.
-    }
-  }, [layout]);
-
-  const addWidget = useCallback((id: SlotId) => {
-    setLayout((current) => (current.includes(id) ? current : [...current, id]));
-  }, []);
-
-  const removeWidget = useCallback((id: SlotId) => {
-    setLayout((current) => current.filter((x) => x !== id));
-  }, []);
-
-  const reorder = useCallback((activeId: SlotId, overId: SlotId) => {
-    setLayout((current) => {
-      const from = current.indexOf(activeId);
-      const to = current.indexOf(overId);
-      if (from === -1 || to === -1 || from === to) return current;
-      const next = [...current];
-      next.splice(from, 1);
-      next.splice(to, 0, activeId);
-      return next;
-    });
-  }, []);
-
-  const availableToAdd = useMemo(
-    () => WIDGET_CATALOG.filter((w) => !layout.includes(w.id)),
-    [layout],
+  const addWidget = useCallback(
+    (slotId: SlotId, accountId: string | null = null) => {
+      setLayout((current) => [
+        ...current,
+        { instanceId: crypto.randomUUID(), slotId, accountId, config: {} },
+      ]);
+    },
+    [setLayout],
   );
 
-  const isActive = useCallback((id: SlotId) => layout.includes(id), [layout]);
+  const removeWidget = useCallback(
+    (instanceId: string) => {
+      setLayout((current) => current.filter((instance) => instance.instanceId !== instanceId));
+    },
+    [setLayout],
+  );
 
-  return { layout, availableToAdd, isActive, addWidget, removeWidget, reorder };
+  const reorder = useCallback(
+    (activeInstanceId: string, overInstanceId: string) => {
+      setLayout((current) => {
+        const from = current.findIndex((i) => i.instanceId === activeInstanceId);
+        const to = current.findIndex((i) => i.instanceId === overInstanceId);
+        if (from === -1 || to === -1 || from === to) return current;
+        const next = [...current];
+        const [moved] = next.splice(from, 1);
+        next.splice(to, 0, moved);
+        return next;
+      });
+    },
+    [setLayout],
+  );
+
+  const updateConfig = useCallback(
+    (instanceId: string, key: string, value: string) => {
+      setLayout((current) =>
+        current.map((instance) =>
+          instance.instanceId === instanceId
+            ? { ...instance, config: { ...instance.config, [key]: value } }
+            : instance,
+        ),
+      );
+    },
+    [setLayout],
+  );
+
+  // Duplicates are allowed, so the catalog never disables an entry.
+  const availableToAdd = useMemo(() => [...WIDGET_CATALOG], []);
+
+  const activeSlots = useMemo(
+    () => new Set(layout.map((instance) => instance.slotId)),
+    [layout],
+  );
+  const isActive = useCallback((slotId: SlotId) => activeSlots.has(slotId), [activeSlots]);
+
+  return { layout, availableToAdd, isActive, addWidget, removeWidget, reorder, updateConfig };
 }

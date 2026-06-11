@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Minus, Plus } from "lucide-react";
 import {
@@ -25,14 +25,15 @@ import { CSS } from "@dnd-kit/utilities";
 import { useDashboardMode } from "@/components/dashboard/dashboard-mode-context";
 import { ShortcutsRow } from "@/components/dashboard/shortcuts-row";
 import { useDashboardLayout } from "@/components/dashboard/use-dashboard-layout";
-import { useWidgetPreference } from "@/components/dashboard/use-widget-preference";
+import { DashboardStateProvider } from "@/components/dashboard/use-dashboard-state";
+import { type WidgetInstance } from "@/components/dashboard/widget-instance";
 import { CalendarMonthGridWidget } from "@/components/widgets/calendar-month-grid-widget";
 import { CalendarTodayAgendaWidget } from "@/components/widgets/calendar-today-agenda-widget";
 import { CalendarUpcomingWeekWidget } from "@/components/widgets/calendar-upcoming-week-widget";
 import { GmailWidget } from "@/components/widgets/gmail-widget";
 import { GoogleTasksWidget } from "@/components/widgets/google-tasks-widget";
 import { deriveLinearAssignedUrl, LinearWidget } from "@/components/widgets/linear-widget";
-import { WidgetCatalogDialog } from "@/components/widgets/widget-catalog-dialog";
+import { WidgetCatalogDialog, type WidgetAccount } from "@/components/widgets/widget-catalog-dialog";
 import { CATALOG_BY_ID, type SlotId } from "@/components/widgets/widget-catalog";
 import { cn } from "@/lib/utils";
 import { type Provider, type WidgetPayload } from "@/features/integrations/types";
@@ -108,7 +109,6 @@ function WidgetSlot({
   );
 }
 
-/** Edit mode: the widget jiggles and is draggable; clicks do not open it. */
 /**
  * Like dnd-kit's PointerSensor, but a pointerdown that lands inside a
  * `[data-no-drag]` subtree never starts a drag — so header controls (the
@@ -133,13 +133,14 @@ export class ControlAwarePointerSensor extends PointerSensor {
   ];
 }
 
+/** Edit mode: the widget jiggles and is draggable; clicks do not open it. */
 function SortableWidget({
   id,
   index,
   children,
   onRemove,
 }: {
-  id: SlotId;
+  id: string;
   index: number;
   children: React.ReactNode;
   onRemove: () => void;
@@ -207,59 +208,134 @@ function SortableWidget({
   );
 }
 
-export default function WidgetGrid() {
+/** The config key each configurable slot reads/writes on its instance. */
+const CONFIG_KEY: Partial<Record<SlotId, string>> = {
+  gmail: "gmail-view",
+  google_tasks: "tasks-view",
+  linear: "linear-project",
+};
+
+/**
+ * Renders one widget instance and owns its data query. Each instance queries
+ * independently, keyed by its slot + config, so two instances of the same widget
+ * (e.g. two Linear widgets on different projects) fetch the right data each.
+ */
+function InstanceWidget({
+  instance,
+  onConfigChange,
+  onLoaded,
+}: {
+  instance: WidgetInstance;
+  onConfigChange: (key: string, value: string) => void;
+  /** Lets the grid resolve a click destination from loaded data (Linear). */
+  onLoaded?: (payload: WidgetPayload | undefined) => void;
+}) {
+  const { slotId, config } = instance;
+  const entry = CATALOG_BY_ID[slotId];
+  const provider = entry.provider;
+  const configKey = CONFIG_KEY[slotId];
+  const configValue = configKey ? config[configKey] : undefined;
+  const setConfig = configKey ? (value: string) => onConfigChange(configKey, value) : undefined;
+
+  // Gmail's view is a server-side query param; key it so All/Unread fetch apart.
+  const gmailView = slotId === "gmail" ? configValue ?? "all" : undefined;
+
+  // NOTE: queries are keyed by slot + config but NOT by accountId. Today every
+  // instance binds to the single login account (accountId === null), so the data
+  // is identical regardless. When FRA-138 adds real multi-account, accountId must
+  // be threaded into both the query key and fetchWidget, or two instances on
+  // different accounts will collapse into one cache entry.
+  const query = useQuery({
+    queryKey:
+      slotId === "gmail"
+        ? ["integrations", "gmail", "emails", gmailView]
+        : provider === "google_calendar"
+          ? ["integrations", "calendar", "events"]
+          : provider === "google_tasks"
+            ? ["integrations", "tasks"]
+            : ["integrations", "linear", "issues"],
+    queryFn: () => fetchWidget(provider, gmailView),
+    staleTime: provider === "linear" ? 5 * 60_000 : provider === "google_tasks" ? 2 * 60_000 : 60_000,
+    gcTime: 15 * 60_000,
+  });
+
+  useEffect(() => {
+    onLoaded?.(query.data);
+  }, [onLoaded, query.data]);
+
+  const shared = {
+    onRetry: () => query.refetch(),
+    isRetrying: query.isFetching,
+    configValue,
+    onConfigChange: setConfig,
+  };
+
+  switch (slotId) {
+    case "linear":
+      return (
+        <LinearWidget
+          payload={getWidgetPayload("linear", "Linear", query.data, query.error)}
+          {...shared}
+        />
+      );
+    case "gmail":
+      return (
+        <GmailWidget
+          payload={getWidgetPayload("gmail", "Gmail", query.data, query.error)}
+          {...shared}
+        />
+      );
+    case "google_tasks":
+      return (
+        <GoogleTasksWidget
+          payload={getWidgetPayload("google_tasks", "Tasks", query.data, query.error)}
+          {...shared}
+        />
+      );
+    case "calendar_today":
+      return (
+        <CalendarTodayAgendaWidget
+          payload={getWidgetPayload("google_calendar", "Calendar", query.data, query.error)}
+          {...shared}
+        />
+      );
+    case "calendar_upcoming":
+      return (
+        <CalendarUpcomingWeekWidget
+          payload={getWidgetPayload("google_calendar", "Upcoming week", query.data, query.error)}
+          {...shared}
+        />
+      );
+    case "calendar_month":
+      return (
+        <CalendarMonthGridWidget
+          payload={getWidgetPayload("google_calendar", "Calendar", query.data, query.error)}
+          {...shared}
+        />
+      );
+  }
+}
+
+function WidgetGrid({ accountEmail }: { accountEmail: string | null }) {
   const router = useRouter();
   const { isEditing } = useDashboardMode();
 
-  // Active widgets, order, and add/remove all live in the layout hook, which
-  // reads/writes localStorage. The grid is client-only (ssr: false), so the
-  // hook's lazy initializer reads storage without a hydration mismatch.
-  const { layout, isActive, addWidget, removeWidget, reorder } = useDashboardLayout();
+  // Until FRA-138's multi-account connect flow lands, the only account is the
+  // login account, recorded as the default (accountId `null`).
+  const accounts: WidgetAccount[] = [{ id: null, label: accountEmail ?? "Default account" }];
+
+  // Active instances, order, add/remove/config all live in the layout hook, now
+  // backed by per-user Supabase state (with a localStorage cache).
+  const { layout, addWidget, removeWidget, reorder, updateConfig } = useDashboardLayout();
   const [catalogOpen, setCatalogOpen] = useState(false);
 
-  // Only fetch a provider's data when at least one of its widgets is on the
-  // dashboard. Removed/never-added widgets cost no network requests. The
-  // calendar provider feeds three slots, so it stays active if any are present.
-  const activeProviders = useMemo(() => {
-    const providers = new Set<Provider>();
-    for (const id of layout) providers.add(CATALOG_BY_ID[id].provider);
-    return providers;
-  }, [layout]);
-
-  const linearQuery = useQuery({
-    queryKey: ["integrations", "linear", "issues"],
-    queryFn: () => fetchWidget("linear"),
-    enabled: activeProviders.has("linear"),
-    staleTime: 5 * 60_000,
-    gcTime: 15 * 60_000,
-  });
-
-  // Gmail's view is lifted here so it keys the per-view fetch (All and Unread are
-  // independent server-side queries, not a client-side filter of one list).
-  const [gmailView, setGmailView] = useWidgetPreference("gmail-view", "all");
-  const gmailQuery = useQuery({
-    queryKey: ["integrations", "gmail", "emails", gmailView],
-    queryFn: () => fetchWidget("gmail", gmailView),
-    enabled: activeProviders.has("gmail"),
-    staleTime: 60_000,
-    gcTime: 15 * 60_000,
-  });
-
-  const tasksQuery = useQuery({
-    queryKey: ["integrations", "tasks"],
-    queryFn: () => fetchWidget("google_tasks"),
-    enabled: activeProviders.has("google_tasks"),
-    staleTime: 2 * 60_000,
-    gcTime: 15 * 60_000,
-  });
-
-  const calendarQuery = useQuery({
-    queryKey: ["integrations", "calendar", "events"],
-    queryFn: () => fetchWidget("google_calendar"),
-    enabled: activeProviders.has("google_calendar"),
-    staleTime: 60_000,
-    gcTime: 15 * 60_000,
-  });
+  // Linear's catalog destination is the generic https://linear.app/; when issues
+  // have loaded we resolve the user's own assigned-issues view from their URLs.
+  // The latest loaded Linear payload is captured so a click can use it.
+  const linearItemsRef = useRef<WidgetPayload["items"]>([]);
+  const handleLinearLoaded = useCallback((payload: WidgetPayload | undefined) => {
+    if (payload) linearItemsRef.current = payload.items;
+  }, []);
 
   const sensors = useSensors(
     useSensor(ControlAwarePointerSensor, { activationConstraint: { distance: 6 } }),
@@ -269,23 +345,17 @@ export default function WidgetGrid() {
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
-    reorder(active.id as SlotId, over.id as SlotId);
+    reorder(active.id as string, over.id as string);
   }
 
-  function openWidget(id: SlotId) {
-    // When Gmail is showing the Unread view, open Gmail's unread search instead of the
-    // inbox so the user lands directly on their unread mail.
-    //
-    // Linear's catalog destination is the generic https://linear.app/; when we
-    // have loaded issues we can resolve the user's own assigned-issues view from
-    // their issue URLs and open that instead.
+  function openWidget(instance: WidgetInstance) {
+    const { slotId, config } = instance;
     const destination =
-      id === "gmail" && gmailView === "unread"
+      slotId === "gmail" && config["gmail-view"] === "unread"
         ? "https://mail.google.com/mail/u/0/#search/is%3Aunread+category%3Aprimary"
-        : id === "linear"
-          ? deriveLinearAssignedUrl(linearQuery.data?.items ?? []) ??
-            CATALOG_BY_ID[id].destination
-          : CATALOG_BY_ID[id].destination;
+        : slotId === "linear"
+          ? deriveLinearAssignedUrl(linearItemsRef.current) ?? CATALOG_BY_ID[slotId].destination
+          : CATALOG_BY_ID[slotId].destination;
     if (destination.startsWith("http")) {
       window.open(destination, "_blank", "noopener,noreferrer");
       return;
@@ -293,70 +363,15 @@ export default function WidgetGrid() {
     router.push(destination);
   }
 
-  const slotContent = useMemo<Record<SlotId, React.ReactNode>>(
-    () => ({
-      linear: (
-        <LinearWidget
-          payload={getWidgetPayload("linear", "Linear", linearQuery.data, linearQuery.error)}
-          onRetry={() => linearQuery.refetch()}
-          isRetrying={linearQuery.isFetching}
-        />
-      ),
-      gmail: (
-        <GmailWidget
-          payload={getWidgetPayload("gmail", "Gmail", gmailQuery.data, gmailQuery.error)}
-          onRetry={() => gmailQuery.refetch()}
-          isRetrying={gmailQuery.isFetching}
-          view={gmailView as "all" | "unread"}
-          onViewChange={setGmailView}
-        />
-      ),
-      google_tasks: (
-        <GoogleTasksWidget
-          payload={getWidgetPayload("google_tasks", "Tasks", tasksQuery.data, tasksQuery.error)}
-          onRetry={() => tasksQuery.refetch()}
-          isRetrying={tasksQuery.isFetching}
-        />
-      ),
-      calendar_today: (
-        <CalendarTodayAgendaWidget
-          payload={getWidgetPayload(
-            "google_calendar",
-            "Calendar",
-            calendarQuery.data,
-            calendarQuery.error,
-          )}
-          onRetry={() => calendarQuery.refetch()}
-          isRetrying={calendarQuery.isFetching}
-        />
-      ),
-      calendar_upcoming: (
-        <CalendarUpcomingWeekWidget
-          payload={getWidgetPayload(
-            "google_calendar",
-            "Upcoming week",
-            calendarQuery.data,
-            calendarQuery.error,
-          )}
-          onRetry={() => calendarQuery.refetch()}
-          isRetrying={calendarQuery.isFetching}
-        />
-      ),
-      calendar_month: (
-        <CalendarMonthGridWidget
-          payload={getWidgetPayload(
-            "google_calendar",
-            "Calendar",
-            calendarQuery.data,
-            calendarQuery.error,
-          )}
-          onRetry={() => calendarQuery.refetch()}
-          isRetrying={calendarQuery.isFetching}
-        />
-      ),
-    }),
-    [linearQuery, gmailQuery, tasksQuery, calendarQuery, gmailView, setGmailView],
-  );
+  function renderInstance(instance: WidgetInstance) {
+    return (
+      <InstanceWidget
+        instance={instance}
+        onConfigChange={(key, value) => updateConfig(instance.instanceId, key, value)}
+        onLoaded={instance.slotId === "linear" ? handleLinearLoaded : undefined}
+      />
+    );
+  }
 
   const gridClassName = "grid grid-cols-1 gap-4 lg:grid-cols-2";
 
@@ -370,9 +385,9 @@ export default function WidgetGrid() {
           </div>
         ) : (
           <div className={gridClassName}>
-            {layout.map((id) => (
-              <WidgetSlot key={id} onOpen={() => openWidget(id)}>
-                {slotContent[id]}
+            {layout.map((instance) => (
+              <WidgetSlot key={instance.instanceId} onOpen={() => openWidget(instance)}>
+                {renderInstance(instance)}
               </WidgetSlot>
             ))}
           </div>
@@ -393,11 +408,16 @@ export default function WidgetGrid() {
       >
         {/* The "+" tile is deliberately NOT part of `items`, so dnd-kit never
             treats it as sortable or as a drop target. */}
-        <SortableContext items={layout} strategy={rectSortingStrategy}>
+        <SortableContext items={layout.map((i) => i.instanceId)} strategy={rectSortingStrategy}>
           <div className={gridClassName}>
-            {layout.map((id, index) => (
-              <SortableWidget key={id} id={id} index={index} onRemove={() => removeWidget(id)}>
-                {slotContent[id]}
+            {layout.map((instance, index) => (
+              <SortableWidget
+                key={instance.instanceId}
+                id={instance.instanceId}
+                index={index}
+                onRemove={() => removeWidget(instance.instanceId)}
+              >
+                {renderInstance(instance)}
               </SortableWidget>
             ))}
             <AddWidgetTile onClick={() => setCatalogOpen(true)} />
@@ -408,10 +428,28 @@ export default function WidgetGrid() {
       <WidgetCatalogDialog
         open={catalogOpen}
         onOpenChange={setCatalogOpen}
-        isActive={isActive}
+        accounts={accounts}
         onAdd={addWidget}
       />
     </>
+  );
+}
+
+/**
+ * Wraps the grid in the single dashboard-state store so the grid's widgets and
+ * the shortcuts row share one source of truth (no cross-slice clobber).
+ */
+export default function WidgetGridWithState({
+  accountEmail,
+  userId,
+}: {
+  accountEmail: string | null;
+  userId: string | null;
+}) {
+  return (
+    <DashboardStateProvider userId={userId}>
+      <WidgetGrid accountEmail={accountEmail} />
+    </DashboardStateProvider>
   );
 }
 

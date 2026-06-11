@@ -3,7 +3,8 @@
 import { format, isToday } from "date-fns";
 import Link from "next/link";
 
-import { useWidgetPreference } from "@/components/dashboard/use-widget-preference";
+import { useState } from "react";
+
 import { WidgetCard } from "@/components/widgets/widget-card";
 import { WidgetEmptyState } from "@/components/widgets/widget-empty-state";
 import { WidgetErrorState } from "@/components/widgets/widget-error-state";
@@ -36,14 +37,14 @@ export function GmailWidget({
   payload,
   onRetry,
   isRetrying,
-  view: viewProp,
-  onViewChange,
+  configValue,
+  onConfigChange,
 }: WidgetProps) {
-  // The grid owns the view so it can key the per-view fetch; fall back to the local
-  // preference when the widget is rendered standalone (e.g. previews/tests).
-  const [viewPref, setViewPref] = useWidgetPreference("gmail-view", "all");
-  const view = (viewProp ?? viewPref) as GmailView;
-  const setView = onViewChange ?? setViewPref;
+  // The grid owns the view so it can key the per-view fetch and persist it per
+  // instance; fall back to local state when rendered standalone (e.g. previews).
+  const [localView, setLocalView] = useState("all");
+  const view = (configValue ?? localView) as GmailView;
+  const setView = onConfigChange ?? setLocalView;
 
   // Each view is its own server-fetched list now — no client-side filtering.
   const items = payload.items;
