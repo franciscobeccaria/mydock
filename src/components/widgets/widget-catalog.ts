@@ -9,12 +9,14 @@ export type SlotId =
   | "google_tasks"
   | "calendar_today"
   | "calendar_upcoming"
-  | "calendar_month";
+  | "calendar_month"
+  | "notion_recent"
+  | "notion_page";
 
 // An "app" groups the widgets a single integration offers. Today most apps
 // expose one widget; the calendar exposes three. The catalog dialog is grouped
 // by app, so this scales as we add more apps and more widgets per app.
-export type AppId = "linear" | "gmail" | "google_calendar" | "google_tasks";
+export type AppId = "linear" | "gmail" | "google_calendar" | "google_tasks" | "notion";
 
 export type WidgetCatalogEntry = {
   id: SlotId;
@@ -38,12 +40,14 @@ export type AppGroup = {
 };
 
 const CALENDAR_URL = "https://calendar.google.com/calendar/u/0/r";
+const NOTION_URL = "https://www.notion.so/";
 
 const APP_LABELS: Record<AppId, string> = {
   linear: "Linear",
   gmail: "Gmail",
   google_calendar: "Google Calendar",
   google_tasks: "Google Tasks",
+  notion: "Notion",
 };
 
 // Single source of truth for addable widgets. Do NOT import the server-side
@@ -97,6 +101,22 @@ export const WIDGET_CATALOG: readonly WidgetCatalogEntry[] = [
     label: "Tasks",
     description: "Keep your top to-dos in view while you work.",
     destination: "https://tasks.google.com/tasks/",
+  },
+  {
+    id: "notion_recent",
+    appId: "notion",
+    provider: "notion",
+    label: "Recent pages",
+    description: "Your most recently edited Notion pages, ready to open.",
+    destination: NOTION_URL,
+  },
+  {
+    id: "notion_page",
+    appId: "notion",
+    provider: "notion",
+    label: "Page",
+    description: "Pin one Notion page and read its content right on your dashboard.",
+    destination: NOTION_URL,
   },
 ] as const;
 

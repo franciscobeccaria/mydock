@@ -3,6 +3,7 @@ import {
   SiGmail,
   SiGooglecalendar,
   SiGoogletasks,
+  SiNotion,
 } from "@icons-pack/react-simple-icons";
 import { LayoutGrid } from "lucide-react";
 
@@ -27,6 +28,8 @@ export function ProviderIcon({
       return <SiGoogletasks className={iconClassName} color="#2684FC" />;
     case "google_calendar":
       return <SiGooglecalendar className={iconClassName} color="#4285F4" />;
+    case "notion":
+      return <SiNotion className={iconClassName} color="#000000" />;
     default:
       return <LayoutGrid className={iconClassName} />;
   }

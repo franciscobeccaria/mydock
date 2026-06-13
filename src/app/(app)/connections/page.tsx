@@ -10,7 +10,7 @@ export default async function ConnectionsPage() {
   } = supabase ? await supabase.auth.getUser() : { data: { user: null } };
   const connections = user
     ? await listConnections(user.id)
-    : { google: [], linear: [] };
+    : { google: [], linear: [], notion: [] };
 
   return (
     <PageContainer className="space-y-6">

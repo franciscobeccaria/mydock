@@ -13,8 +13,10 @@ type UseDashboardLayout = {
   availableToAdd: WidgetCatalogEntry[];
   /** Whether a slot has at least one instance on the dashboard. */
   isActive: (slotId: SlotId) => boolean;
-  /** Add a new instance of a slot, bound to an account (`null` = default). */
-  addWidget: (slotId: SlotId, accountId?: string | null) => void;
+  /** Add a new instance of a slot, bound to an account (`null` = default),
+   *  optionally seeded with initial per-instance config (e.g. a Notion page id
+   *  chosen in the catalog preview). */
+  addWidget: (slotId: SlotId, accountId?: string | null, config?: Record<string, string>) => void;
   removeWidget: (instanceId: string) => void;
   reorder: (activeInstanceId: string, overInstanceId: string) => void;
   /** Set a single per-instance config value. */
@@ -25,10 +27,10 @@ export function useDashboardLayout(): UseDashboardLayout {
   const { layout, setLayout } = useDashboardState();
 
   const addWidget = useCallback(
-    (slotId: SlotId, accountId: string | null = null) => {
+    (slotId: SlotId, accountId: string | null = null, config: Record<string, string> = {}) => {
       setLayout((current) => [
         ...current,
-        { instanceId: crypto.randomUUID(), slotId, accountId, config: {} },
+        { instanceId: crypto.randomUUID(), slotId, accountId, config },
       ]);
     },
     [setLayout],

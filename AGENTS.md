@@ -10,6 +10,8 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 This project runs on the harness defined in `docs/harness.md` — read it before starting any meaningful work. These directives are agent-agnostic; agent-specific capabilities (memory, skills) are layered in each agent's own file (e.g. `CLAUDE.md`).
 
+> **Browser verification = agent-browser, always the default.** When a task needs the app driven in a real browser (auth, screenshots, clicking through ACs), reach for the `agent-browser` CLI — NOT Playwright MCP, NOT Chrome DevTools MCP. It is leaner on tokens and carries the Supabase auth recipe (session mint + chunked cookie injection; see the engram `mydock-agent-browser-auth-recipe` memory). Playwright/Chrome-DevTools MCP are exceptions only: state the reason agent-browser can't do the job before using either. Do not reach for them by reflex.
+
 The harness is **self-contained**: skills and commands it depends on are vendored in `.claude/` (`skills/idea-to-feature`, `commands/commit-message`), so cloning this repo on any machine brings the full harness. If the harness references a component, it must live in the repo.
 
 - **Starting a ticket → gather context first, without being asked**:

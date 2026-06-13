@@ -48,8 +48,9 @@ Run before every PR:
 pnpm lint && pnpm typecheck && pnpm build
 ```
 
-- **agent-browser is THE browser tool for verification** — the only default for driving the real authed app. It's leaner on tokens and carries the auth recipe (Supabase session mint + cookie injection, base-ui Select gotcha): [harness-library catalog → Recipes](https://github.com/franciscobeccaria/harness-library/blob/master/catalog/README.md#recipes--harness-how-tos-worth-keeping). Do not reach for it by naming — it's the routine default, like the stage-0 tools.
-- **Do not use Playwright MCP or Chrome DevTools MCP for verification.** They are exceptions, not the path: Chrome DevTools MCP for interactive debugging only; Playwright MCP only when agent-browser genuinely cannot do the job — and you must state the reason before using either.
+> **Browser verification = agent-browser, always the default.** It is THE tool for driving the real authed app — leaner on tokens and it carries the auth recipe (Supabase session mint → chunked `sb-<ref>-auth-token` cookie injection → `agent-browser open`; plus the base-ui Select gotcha). The full recipe lives in [harness-library catalog → Recipes](https://github.com/franciscobeccaria/harness-library/blob/master/catalog/README.md#recipes--harness-how-tos-worth-keeping) and in engram under topic `mydock-agent-browser-auth-recipe` — recall it before driving the authed app. Do not reach for it by naming; it's the routine default like the stage-0 tools.
+>
+> **Playwright MCP and Chrome DevTools MCP are exceptions, not the path.** Chrome DevTools MCP for interactive debugging only; Playwright MCP only when agent-browser genuinely cannot do the job — and you must state the reason before using either. Defaulting to Playwright for a screenshot/verification is a known recurring slip — don't.
 - Supabase changes: verify against local stack (`pnpm supabase:start` / `supabase:reset`); regenerate types with `pnpm supabase:types`.
 - Manual QA checkpoint: default for UI-visible changes, skippable for backend/logic-only work. The agent never runs automated browser QA unprompted — agent-browser gathers evidence and preps the authed session, then the agent stops and waits for Francisco's manual pass and "go" before the PR.
 

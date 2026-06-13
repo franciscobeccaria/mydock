@@ -3,10 +3,11 @@ export const providers = [
   "gmail",
   "google_tasks",
   "google_calendar",
+  "notion",
 ] as const;
 
 export type Provider = (typeof providers)[number];
-export type GoogleCapabilityProvider = Exclude<Provider, "linear">;
+export type GoogleCapabilityProvider = Exclude<Provider, "linear" | "notion">;
 
 export type WidgetViewState =
   | "loading"
