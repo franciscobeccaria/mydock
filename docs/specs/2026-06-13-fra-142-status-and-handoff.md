@@ -1,5 +1,11 @@
 # FRA-142 — Status & Handoff (2026-06-13)
 
+> **CERRADO 2026-06-13.** Commit `4fa9f5b` en `feat/fra-142-notion-integration`,
+> **PR #7** (https://github.com/franciscobeccaria/mydock/pull/7) abierto contra `main`.
+> El pulido del picker (no del todo fluido) sigue en **FRA-147**
+> (https://linear.app/francisco-beccaria/issue/FRA-147). El resto del doc queda como
+> registro histórico de la implementación y de los intentos sobre el bug del picker.
+>
 > Continuation doc. Branch: `feat/fra-142-notion-integration`.
 > The feature is functionally complete and build-green. The **Combobox refactor** that
 > fixes the picker's dismissal bug AND makes it consistent with the other widgets'
