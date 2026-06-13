@@ -12,4 +12,5 @@ export const CONNECT_PATH: Record<Provider, string> = {
   gmail: "/api/integrations/google/start?next=/connections",
   google_tasks: "/api/integrations/google/start?next=/connections",
   google_calendar: "/api/integrations/google/start?next=/connections",
+  notion: "/connections",
 };

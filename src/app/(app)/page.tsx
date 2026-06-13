@@ -15,7 +15,7 @@ export default async function DashboardPage() {
 
   const connections = user
     ? await listConnections(user.id)
-    : { google: [], linear: [] };
+    : { google: [], linear: [], notion: [] };
 
   return (
     <PageContainer>

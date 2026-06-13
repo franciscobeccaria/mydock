@@ -23,6 +23,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 
 import { useDashboardMode } from "@/components/dashboard/dashboard-mode-context";
+import { PickerLockProvider, usePickerLock } from "@/components/dashboard/picker-lock-context";
 import { ShortcutsRow } from "@/components/dashboard/shortcuts-row";
 import { useDashboardLayout } from "@/components/dashboard/use-dashboard-layout";
 import { DashboardStateProvider } from "@/components/dashboard/use-dashboard-state";
@@ -45,6 +46,9 @@ import { type WidgetPayload } from "@/features/integrations/types";
 
 const INTERACTIVE =
   'a,button,input,textarea,select,[role="button"],[role="option"],[role="listbox"],[data-slot="select-trigger"],[data-interactive="true"]';
+
+/** Stable empty sensor descriptor list — passed to DndContext to suspend dragging. */
+const NO_SENSORS: ReturnType<typeof useSensors> = [];
 
 /** View mode: clicking the widget opens its destination (unless an inner control was hit). */
 function WidgetSlot({
@@ -195,10 +199,14 @@ function InstanceWidget({
   // Gmail's view is a server-side query param; key it so All/Unread fetch apart.
   const gmailView = slotId === "gmail" ? configValue ?? "all" : undefined;
 
+  // The Notion Page widget's config is its pinned page id, sent to the server as
+  // the generic `config` param so the registry serves that page's content.
+  const notionPageId = slotId === "notion_page" ? configValue : undefined;
+
   // Keyed by accountId so two instances on different connections cache apart.
   const query = useQuery({
-    queryKey: widgetQueryKey(slotId, gmailView, instance.accountId),
-    queryFn: () => fetchWidget(provider, gmailView, instance.accountId),
+    queryKey: widgetQueryKey(slotId, gmailView, instance.accountId, notionPageId),
+    queryFn: () => fetchWidget(provider, gmailView, instance.accountId, notionPageId),
     staleTime: widgetStaleTime(provider),
     gcTime: 15 * 60_000,
   });
@@ -228,6 +236,12 @@ function WidgetGrid({
 }) {
   const router = useRouter();
   const { isEditing } = useDashboardMode();
+  // While a header picker popup is open, suspend the drag sensors. The popup is
+  // portaled outside the tile, so the click that dismisses it lands on a tile
+  // and is also seen by dnd-kit, which starts/cancels a drag whose pointer cycle
+  // bounces focus back to the picker and reopens it. No sensors = no drag to
+  // start = the outside-click just dismisses. See picker-lock-context.
+  const { isPickerOpen } = usePickerLock();
 
   // The login account is the default (accountId `null`, sentinel "__default__"),
   // followed by every other real connection (non-default google + all linear).
@@ -256,16 +270,24 @@ function WidgetGrid({
       name: c.email,
       avatarUrl: null,
     })),
+    ...connections.notion.map((c) => ({
+      id: c.id,
+      label: c.email ?? "Notion workspace",
+      provider: "notion" as const,
+      name: c.email,
+      avatarUrl: null,
+    })),
   ];
 
   // Which catalog app groups have a backing connection. Google-derived apps
   // (gmail / tasks / calendar) share the single google connection list; linear
-  // maps to the linear list.
+  // and notion map to their own connection lists.
   const connectedByProvider: Record<string, boolean> = {
     linear: connections.linear.length > 0,
     gmail: connections.google.length > 0,
     google_tasks: connections.google.length > 0,
     google_calendar: connections.google.length > 0,
+    notion: connections.notion.length > 0,
   };
 
   // Active instances, order, add/remove/config all live in the layout hook, now
@@ -281,10 +303,13 @@ function WidgetGrid({
     if (payload) linearItemsRef.current = payload.items;
   }, []);
 
-  const sensors = useSensors(
+  const activeSensors = useSensors(
     useSensor(ControlAwarePointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
+  // Empty sensor set while a picker is open → dnd-kit listens for nothing, so the
+  // dismiss click can't start a drag (see isPickerOpen above).
+  const sensors = isPickerOpen ? NO_SENSORS : activeSensors;
 
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
@@ -408,12 +433,14 @@ export default function WidgetGridWithState({
 }) {
   return (
     <DashboardStateProvider userId={userId}>
-      <WidgetGrid
-        accountEmail={accountEmail}
-        accountName={accountName}
-        accountAvatarUrl={accountAvatarUrl}
-        connections={connections}
-      />
+      <PickerLockProvider>
+        <WidgetGrid
+          accountEmail={accountEmail}
+          accountName={accountName}
+          accountAvatarUrl={accountAvatarUrl}
+          connections={connections}
+        />
+      </PickerLockProvider>
     </DashboardStateProvider>
   );
 }

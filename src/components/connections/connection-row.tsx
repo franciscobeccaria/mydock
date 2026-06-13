@@ -57,15 +57,15 @@ export function ConnectionRow({ connection }: { connection: ConnectionRecord }) 
         "/api/integrations/google/start?next=/connections";
       return;
     }
-    // Linear has no per-row reconnect: re-pasting a key via the group's
-    // "Connect a Linear workspace" button upserts the same workspace.
+    // Linear/Notion have no per-row reconnect: re-pasting a token via the group's
+    // "Connect a … workspace" button upserts the same workspace.
   }
 
-  // Reconnect is only meaningful for Google (OAuth re-auth). For Linear it is a
-  // no-op — see the comment above; we leave the menu item inert rather than add
-  // cross-component dialog plumbing.
+  // Reconnect is only meaningful for Google (OAuth re-auth). For token-based
+  // providers (Linear/Notion) it is a no-op — see the comment above; we leave the
+  // menu item inert rather than add cross-component dialog plumbing.
   function reconnectDisabled() {
-    return connection.provider === "linear";
+    return connection.provider !== "google";
   }
 
   return (

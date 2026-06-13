@@ -6,6 +6,7 @@ import { Plus } from "lucide-react";
 import { ProviderIcon } from "@/components/widgets/provider-icon";
 import { ConnectionRow } from "@/components/connections/connection-row";
 import { LinearConnectDialog } from "@/components/connections/linear-connect-dialog";
+import { NotionConnectDialog } from "@/components/connections/notion-connect-dialog";
 import type {
   ConnectionRecord,
   ConnectionsByProvider,
@@ -17,6 +18,7 @@ export function ConnectionsList({
   connections: ConnectionsByProvider;
 }) {
   const [linearOpen, setLinearOpen] = useState(false);
+  const [notionOpen, setNotionOpen] = useState(false);
 
   return (
     <div className="grid gap-6">
@@ -43,7 +45,17 @@ export function ConnectionsList({
         onAdd={() => setLinearOpen(true)}
       />
 
+      {/* ── Notion group ─────────────────────────────────────────── */}
+      <ProviderGroup
+        provider="notion"
+        title="Notion"
+        connections={connections.notion}
+        addLabel="Connect a Notion workspace"
+        onAdd={() => setNotionOpen(true)}
+      />
+
       <LinearConnectDialog open={linearOpen} onOpenChange={setLinearOpen} />
+      <NotionConnectDialog open={notionOpen} onOpenChange={setNotionOpen} />
     </div>
   );
 }
@@ -58,7 +70,7 @@ function ProviderGroup({
   onAdd,
   addDisabledHint,
 }: {
-  provider: "gmail" | "linear";
+  provider: "gmail" | "linear" | "notion";
   title: string;
   connections: ConnectionRecord[];
   addLabel: string;

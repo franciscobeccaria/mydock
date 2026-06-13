@@ -49,11 +49,11 @@ export type WidgetAccount = {
   label: string;
   /**
    * Which provider family this account belongs to: "google" (used by gmail,
-   * tasks, calendar widgets) or "linear". The default/login account is "google".
-   * Used to filter the picker so a widget only offers accounts it can actually
-   * use — selecting a Linear account on a Gmail widget would 404.
+   * tasks, calendar widgets), "linear", or "notion". The default/login account
+   * is "google". Used to filter the picker so a widget only offers accounts it
+   * can actually use — selecting a Linear account on a Gmail widget would 404.
    */
-  provider: "google" | "linear";
+  provider: "google" | "linear" | "notion";
   /** Display name for the avatar fallback initials; falls back to the label. */
   name?: string | null;
   /** Profile image (e.g. Google avatar); omitted → letter-fallback avatar. */
@@ -61,8 +61,12 @@ export type WidgetAccount = {
 };
 
 /** The provider family a catalog entry's widget reads from. */
-function accountProviderForEntry(provider: WidgetCatalogEntry["provider"]): "google" | "linear" {
-  return provider === "linear" ? "linear" : "google";
+function accountProviderForEntry(
+  provider: WidgetCatalogEntry["provider"],
+): "google" | "linear" | "notion" {
+  if (provider === "linear") return "linear";
+  if (provider === "notion") return "notion";
+  return "google";
 }
 
 // Sentinel select value for the default (login) account, whose id is `null`.
@@ -98,11 +102,14 @@ export function WidgetCatalogDialog({
   addedByApp: Record<string, number>;
   /** Whether each app group's backing provider is connected; locks the rest. */
   connectedByProvider: Record<string, boolean>;
-  onAdd: (slotId: SlotId, accountId: string | null) => void;
+  onAdd: (slotId: SlotId, accountId: string | null, config?: Record<string, string>) => void;
 }) {
   // The widget chosen for the preview step; null while browsing the list.
   const [selected, setSelected] = useState<SlotId | null>(null);
   const [accountValue, setAccountValue] = useState(DEFAULT_ACCOUNT);
+  // Per-instance config the user sets IN the preview (e.g. a Notion page id).
+  // Seeded into the new widget on commit so what you previewed is what you add.
+  const [previewConfig, setPreviewConfig] = useState<Record<string, string>>({});
 
   // Reset the in-progress selection as the dialog closes (event-driven, not an
   // effect) so it reopens clean on the list step.
@@ -110,21 +117,27 @@ export function WidgetCatalogDialog({
     if (!next) {
       setSelected(null);
       setAccountValue(DEFAULT_ACCOUNT);
+      setPreviewConfig({});
     }
     onOpenChange(next);
   }
 
   // Pick a widget and reset the account picker to the default, so the selection
   // always starts on an account valid for the chosen widget's provider (a stale
-  // Linear id must never carry over to a Gmail widget).
+  // Linear id must never carry over to a Gmail widget). Config resets too.
   function selectWidget(slotId: SlotId) {
     setSelected(slotId);
     setAccountValue(DEFAULT_ACCOUNT);
+    setPreviewConfig({});
   }
 
   function commit() {
     if (!selected) return;
-    onAdd(selected, accountValue === DEFAULT_ACCOUNT ? null : accountValue);
+    onAdd(
+      selected,
+      accountValue === DEFAULT_ACCOUNT ? null : accountValue,
+      Object.keys(previewConfig).length ? previewConfig : undefined,
+    );
     handleOpenChange(false);
   }
 
@@ -132,13 +145,17 @@ export function WidgetCatalogDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="gap-0 overflow-hidden p-0 sm:max-w-2xl">
+      {/* [&>*]:min-w-0 lets the grid children shrink instead of sizing the dialog
+          to a wide preview's min-content (which would clip on the right). */}
+      <DialogContent className="grid-cols-[minmax(0,1fr)] gap-0 overflow-hidden p-0 sm:max-w-2xl [&>*]:min-w-0">
         {selectedEntry ? (
           <PreviewStep
             entry={selectedEntry}
             accounts={accounts}
             accountValue={accountValue}
             onAccountChange={setAccountValue}
+            previewConfig={previewConfig}
+            onPreviewConfigChange={setPreviewConfig}
             onBack={() => setSelected(null)}
             onAdd={commit}
           />
@@ -416,6 +433,8 @@ function PreviewStep({
   accounts,
   accountValue,
   onAccountChange,
+  previewConfig,
+  onPreviewConfigChange,
   onBack,
   onAdd,
 }: {
@@ -423,6 +442,9 @@ function PreviewStep({
   accounts: WidgetAccount[];
   accountValue: string;
   onAccountChange: (value: string) => void;
+  /** Config set in the preview (e.g. Notion page id), carried into the new widget. */
+  previewConfig: Record<string, string>;
+  onPreviewConfigChange: (config: Record<string, string>) => void;
   onBack: () => void;
   onAdd: () => void;
 }) {
@@ -457,10 +479,22 @@ function PreviewStep({
         <DialogDescription>{entry.description}</DialogDescription>
       </DialogHeader>
 
-      <div className="flex flex-col gap-4 px-6 py-5">
-        {/* Live preview of the real widget, non-interactive. */}
-        <div className="pointer-events-none select-none">
-          <WidgetPreview slotId={entry.id} />
+      <div className="flex min-w-0 flex-col gap-4 px-6 py-5">
+        {/* Live preview of the real widget. min-w-0 + overflow clamp the card so
+            its nowrap rows (Linear badges/avatars/dates) can't force the dialog
+            wider than its max-width and clip on the right. The preview is
+            non-interactive EXCEPT the header config control (e.g. Notion's page
+            picker), so what you pick here is what the added widget shows. */}
+        <div className="min-w-0 overflow-hidden select-none [&_*]:pointer-events-none [&_[data-no-drag]]:pointer-events-auto [&_[data-no-drag]_*]:pointer-events-auto">
+          <WidgetPreview
+            slotId={entry.id}
+            configValue={CONFIG_KEY[entry.id] ? previewConfig[CONFIG_KEY[entry.id]!] : undefined}
+            onConfigChange={
+              CONFIG_KEY[entry.id]
+                ? (value) => onPreviewConfigChange({ [CONFIG_KEY[entry.id]!]: value })
+                : undefined
+            }
+          />
         </div>
 
         <div className="flex flex-col gap-1.5">
@@ -537,23 +571,38 @@ function AccountOption({ account }: { account: WidgetAccount }) {
 
 /**
  * Fetches the slot's payload (same query as the dashboard, so it's cache-shared)
- * and renders the real widget component as a static preview. Header controls are
- * hidden — the parent makes the whole preview non-interactive.
+ * and renders the real widget component as a live preview. The parent makes the
+ * body non-interactive but keeps the header config control (e.g. Notion's page
+ * picker) clickable, so `configValue`/`onConfigChange` drive what the preview —
+ * and the eventually-added widget — shows. For the Notion Page widget the chosen
+ * page id is passed to the fetch as `config` so its content renders here.
  */
-function WidgetPreview({ slotId }: { slotId: SlotId }) {
+function WidgetPreview({
+  slotId,
+  configValue,
+  onConfigChange,
+}: {
+  slotId: SlotId;
+  configValue?: string;
+  onConfigChange?: (value: string) => void;
+}) {
   const provider = CATALOG_BY_ID[slotId].provider;
   const gmailView = CONFIG_KEY[slotId] === "gmail-view" ? "all" : undefined;
+  const notionPageId = slotId === "notion_page" ? configValue : undefined;
 
   const query = useQuery({
-    queryKey: widgetQueryKey(slotId, gmailView),
-    queryFn: () => fetchWidget(provider, gmailView),
+    queryKey: widgetQueryKey(slotId, gmailView, null, notionPageId),
+    queryFn: () => fetchWidget(provider, gmailView, null, notionPageId),
     staleTime: widgetStaleTime(provider),
     gcTime: 15 * 60_000,
   });
 
   return (
     <div className="rounded-[20px]">
-      {renderWidget(slotId, getWidgetPayload(provider, WIDGET_TITLE[slotId], query.data, query.error), {})}
+      {renderWidget(slotId, getWidgetPayload(provider, WIDGET_TITLE[slotId], query.data, query.error), {
+        configValue,
+        onConfigChange,
+      })}
     </div>
   );
 }

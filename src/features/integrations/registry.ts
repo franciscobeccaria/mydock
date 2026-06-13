@@ -4,6 +4,9 @@ import { getRequiredGoogleScopes } from "@/features/integrations/providers/googl
 import { getGoogleTaskItems } from "@/features/integrations/providers/google/tasks.adapter";
 import { getLinearItems } from "@/features/integrations/providers/linear/adapter";
 import { linearScopes } from "@/features/integrations/providers/linear/types";
+import { getNotionRecentPages } from "@/features/integrations/providers/notion/recent-pages.adapter";
+import { getNotionPage } from "@/features/integrations/providers/notion/page.adapter";
+import { notionScopes } from "@/features/integrations/providers/notion/types";
 import { buildTodaySummary } from "@/features/widgets/summary";
 import { CONNECT_PATH } from "@/features/integrations/connect-paths";
 import { isSupabaseConfigured } from "@/lib/env";
@@ -43,10 +46,24 @@ const providerMeta = {
     requiredScopes: getRequiredGoogleScopes("google_calendar"),
     connectPath: CONNECT_PATH.google_calendar,
   },
+  notion: {
+    label: "Notion",
+    description: "Surface your recent pages and pinned notes on your dashboard.",
+    requiredScopes: [...notionScopes],
+    connectPath: CONNECT_PATH.notion,
+  },
 } satisfies Record<
   Provider,
   Pick<IntegrationStatusRecord, "label" | "description" | "requiredScopes" | "connectPath">
 >;
+
+// Token-based providers connect via a pasted secret (no OAuth consent flow), so
+// they're exempt from the scope/consent machinery that gates the Google providers.
+const TOKEN_BASED_PROVIDERS = new Set<Provider>(["linear", "notion"]);
+
+function isTokenBased(provider: Provider) {
+  return TOKEN_BASED_PROVIDERS.has(provider);
+}
 
 function buildScopeStatus(provider: Provider, grantedScopes: string[] | null | undefined) {
   const requiredScopes = providerMeta[provider].requiredScopes;
@@ -57,7 +74,7 @@ function buildScopeStatus(provider: Provider, grantedScopes: string[] | null | u
     requiredScopes,
     grantedScopes: granted,
     missingScopes: missing,
-    needsConsent: missing.length > 0 && provider !== "linear",
+    needsConsent: missing.length > 0 && !isTokenBased(provider),
   };
 }
 
@@ -101,7 +118,7 @@ function getDefaultScopeStatus(provider: Provider) {
     requiredScopes: [...providerMeta[provider].requiredScopes],
     grantedScopes: [],
     missingScopes: [...providerMeta[provider].requiredScopes],
-    needsConsent: provider !== "linear",
+    needsConsent: !isTokenBased(provider),
   };
 }
 
@@ -114,7 +131,7 @@ function getDerivedWidgetState(
     return "not_connected";
   }
 
-  if (provider !== "linear" && statusRecord.needsConsent) {
+  if (!isTokenBased(provider) && statusRecord.needsConsent) {
     return "permission_required";
   }
 
@@ -138,7 +155,7 @@ function shouldSkipProviderLoad(
     return true;
   }
 
-  if (provider !== "linear" && statusRecord.needsConsent) {
+  if (!isTokenBased(provider) && statusRecord.needsConsent) {
     return true;
   }
 
@@ -259,6 +276,9 @@ export async function getWidgetPayload(
   previewState?: WidgetViewState,
   view?: GmailView,
   accountId?: string | null,
+  // Free-form per-instance config. Today only the Notion Page widget uses it (it
+  // carries the pinned page id). Absent for every other widget.
+  config?: string | null,
 ): Promise<WidgetPayload> {
   const statusRecords = await getIntegrationStatusRecords(userId);
   const statusRecord = statusRecords.find((record) => record.provider === provider);
@@ -273,6 +293,15 @@ export async function getWidgetPayload(
       return buildWidgetPayload(provider, statusRecord, items, false, previewState, {
         unreadCount,
       });
+    }
+
+    if (provider === "notion") {
+      // A pinned page id in `config` selects the Page widget; without it we serve
+      // the Recent pages list. Both are backed by the single `notion` provider.
+      const items = config
+        ? await getNotionPage(userId, config, accountId)
+        : await getNotionRecentPages(userId, accountId);
+      return buildWidgetPayload(provider, statusRecord, items, false, previewState);
     }
 
     const items =
@@ -319,6 +348,17 @@ export async function getWidgetsResponse(
             buildWidgetPayload(provider, statusRecord, items, false, previewState, {
               unreadCount,
             }),
+          ] as const;
+        }
+
+        // The bulk dashboard fetch has no per-instance config, so Notion serves
+        // the Recent pages list here; the Page widget fetches its own data with
+        // its pinned page id client-side.
+        if (provider === "notion") {
+          const items = await getNotionRecentPages(userId);
+          return [
+            provider,
+            buildWidgetPayload(provider, statusRecord, items, false, previewState),
           ] as const;
         }
 

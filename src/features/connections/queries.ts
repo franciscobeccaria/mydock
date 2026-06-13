@@ -1,8 +1,10 @@
 import { createServiceRoleClient } from "@/lib/supabase/service";
 
+export type ConnectionProvider = "google" | "linear" | "notion";
+
 export type ConnectionRecord = {
   id: string;
-  provider: "google" | "linear";
+  provider: ConnectionProvider;
   email: string | null;
   isDefault: boolean;
   createdAt: string;
@@ -11,12 +13,13 @@ export type ConnectionRecord = {
 export type ConnectionsByProvider = {
   google: ConnectionRecord[];
   linear: ConnectionRecord[];
+  notion: ConnectionRecord[];
 };
 
 /** All of a user's connections, grouped by provider, for the /connections page. */
 export async function listConnections(userId: string): Promise<ConnectionsByProvider> {
   const serviceClient = createServiceRoleClient();
-  if (!serviceClient) return { google: [], linear: [] };
+  if (!serviceClient) return { google: [], linear: [], notion: [] };
 
   const result = await serviceClient
     .from("integration_accounts")
@@ -26,7 +29,7 @@ export async function listConnections(userId: string): Promise<ConnectionsByProv
     .order("created_at", { ascending: true });
 
   const rows = result.data ?? [];
-  const map = (provider: "google" | "linear") =>
+  const map = (provider: ConnectionProvider) =>
     rows
       .filter((r) => r.provider === provider)
       .map((r) => ({
@@ -37,5 +40,5 @@ export async function listConnections(userId: string): Promise<ConnectionsByProv
         createdAt: r.created_at,
       }));
 
-  return { google: map("google"), linear: map("linear") };
+  return { google: map("google"), linear: map("linear"), notion: map("notion") };
 }

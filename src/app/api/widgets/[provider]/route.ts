@@ -22,6 +22,8 @@ const searchSchema = z.object({
     .optional(),
   view: z.enum(["all", "unread"]).optional(),
   accountId: z.string().uuid().optional(),
+  // Free-form per-instance config (today: the Notion Page widget's pinned page id).
+  config: z.string().min(1).max(200).optional(),
 });
 
 export async function GET(
@@ -48,6 +50,7 @@ export async function GET(
     previewState: request.nextUrl.searchParams.get("previewState") ?? undefined,
     view: request.nextUrl.searchParams.get("view") ?? undefined,
     accountId: request.nextUrl.searchParams.get("accountId") ?? undefined,
+    config: request.nextUrl.searchParams.get("config") ?? undefined,
   });
 
   if (!parsedParams.success || !parsedSearch.success) {
@@ -60,6 +63,7 @@ export async function GET(
     parsedSearch.data.previewState,
     parsedSearch.data.view,
     parsedSearch.data.accountId,
+    parsedSearch.data.config,
   );
 
   return NextResponse.json(payload);
