@@ -13,4 +13,6 @@ export const CONNECT_PATH: Record<Provider, string> = {
   google_tasks: "/api/integrations/google/start?next=/connections",
   google_calendar: "/api/integrations/google/start?next=/connections",
   notion: "/connections",
+  // Weather needs no connection (public Open-Meteo); never linked from the UI.
+  weather: "/connections",
 };

@@ -2,6 +2,7 @@
 
 import { useDashboardMode } from "@/components/dashboard/dashboard-mode-context";
 import { ProviderIcon } from "@/components/widgets/provider-icon";
+import { UnreadBadge } from "@/components/widgets/unread-badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import type { Provider } from "@/features/integrations/types";
@@ -70,6 +71,7 @@ export function WidgetCard({
   headerControl,
   headerLabel,
   headerBadge,
+  unreadCount,
   children,
   className,
 }: {
@@ -82,18 +84,24 @@ export function WidgetCard({
   headerLabel?: string;
   /** Small status shown next to the title in BOTH view and edit modes (e.g. unread count). */
   headerBadge?: React.ReactNode;
+  /** Drives the iOS-style red corner badge (FRA-137). Absent/0 → no badge. */
+  unreadCount?: number | null;
   children: React.ReactNode;
   className?: string;
 }) {
   const { isEditing } = useDashboardMode();
 
   return (
-    <Card
-      className={cn(
-        "flex h-[350px] flex-col rounded-[20px] border border-[#E7E7EA] bg-white py-0 shadow-[0_6px_20px_rgba(17,24,39,0.035)]",
-        className,
-      )}
-    >
+    // Wrapper is `relative` and NOT clipped, so the corner badge can overhang the
+    // card edge (the Card itself is `overflow-hidden`, which would clip it). The
+    // layout/size className lands here so the badge anchors to the tile's corner.
+    <div className={cn("relative h-[350px]", className)}>
+      <UnreadBadge count={unreadCount} />
+      <Card
+        className={cn(
+          "flex h-full flex-col rounded-[20px] border border-[#E7E7EA] bg-white py-0 shadow-[0_6px_20px_rgba(17,24,39,0.035)]",
+        )}
+      >
       {/* Edit mode: full header — larger app icon, title, and the per-widget select control. */}
       {isEditing ? (
         <CardHeader className="px-3.5 pt-3.5 pb-0 sm:px-4 sm:pt-4">
@@ -147,6 +155,7 @@ export function WidgetCard({
       >
         <div className="px-3.5 sm:px-4">{children}</div>
       </CardContent>
-    </Card>
+      </Card>
+    </div>
   );
 }

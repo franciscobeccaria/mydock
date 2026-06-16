@@ -45,7 +45,8 @@ export function faviconUrl(normalized: string): string | null {
   }
 }
 
-/** Shortcuts are now backed by the per-user dashboard state (Supabase + cache). */
+/** Shortcuts are backed by the per-user dashboard state (Supabase only). Shared
+ *  across all pages — the iOS dock (FRA-140). */
 export function useShortcuts(): UseShortcuts {
   const { shortcuts, setShortcuts } = useDashboardState();
 

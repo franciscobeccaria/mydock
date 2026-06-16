@@ -18,7 +18,13 @@ export default async function DashboardPage() {
     : { google: [], linear: [], notion: [] };
 
   return (
-    <PageContainer>
+    // The dashboard manages its own horizontal rhythm: page dots + dock sit at
+    // the top (no top padding needed now that the dots mark the top), and the
+    // swipeable pages carry their own side padding so the sliding track has air
+    // at the edges instead of the neighbour page bleeding against the border.
+    // Side padding is zeroed at EVERY breakpoint (px-0 alone can't override the
+    // container's sm:/lg: variants) so the page padding isn't doubled up.
+    <PageContainer className="px-0 pt-0 sm:px-0 lg:px-0">
       <WidgetGridClient
         accountEmail={user?.email ?? null}
         accountName={user?.user_metadata?.full_name ?? user?.user_metadata?.name ?? null}

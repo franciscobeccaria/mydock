@@ -7,6 +7,8 @@ import { linearScopes } from "@/features/integrations/providers/linear/types";
 import { getNotionRecentPages } from "@/features/integrations/providers/notion/recent-pages.adapter";
 import { getNotionPage } from "@/features/integrations/providers/notion/page.adapter";
 import { notionScopes } from "@/features/integrations/providers/notion/types";
+import { getWeatherItems } from "@/features/integrations/providers/weather/adapter";
+import { weatherScopes } from "@/features/integrations/providers/weather/types";
 import { buildTodaySummary } from "@/features/widgets/summary";
 import { CONNECT_PATH } from "@/features/integrations/connect-paths";
 import { isSupabaseConfigured } from "@/lib/env";
@@ -52,6 +54,12 @@ const providerMeta = {
     requiredScopes: [...notionScopes],
     connectPath: CONNECT_PATH.notion,
   },
+  weather: {
+    label: "Weather",
+    description: "Current conditions and a short forecast for any city.",
+    requiredScopes: [...weatherScopes],
+    connectPath: CONNECT_PATH.weather,
+  },
 } satisfies Record<
   Provider,
   Pick<IntegrationStatusRecord, "label" | "description" | "requiredScopes" | "connectPath">
@@ -61,8 +69,17 @@ const providerMeta = {
 // they're exempt from the scope/consent machinery that gates the Google providers.
 const TOKEN_BASED_PROVIDERS = new Set<Provider>(["linear", "notion"]);
 
+// No-auth providers need no connection at all (public APIs, e.g. Open-Meteo).
+// They never enter Connections and are always treated as connected — their data
+// loads regardless of any `integrations` row.
+const NO_AUTH_PROVIDERS = new Set<Provider>(["weather"]);
+
 function isTokenBased(provider: Provider) {
   return TOKEN_BASED_PROVIDERS.has(provider);
+}
+
+function isNoAuth(provider: Provider) {
+  return NO_AUTH_PROVIDERS.has(provider);
 }
 
 function buildScopeStatus(provider: Provider, grantedScopes: string[] | null | undefined) {
@@ -95,7 +112,9 @@ export async function getIntegrationStatusRecords(
         ).data ?? [])
       : [];
 
-  return (Object.keys(providerMeta) as Provider[]).map((provider) => {
+  // No-auth providers (e.g. Weather) have nothing to connect, so they never
+  // surface as a Connections card.
+  return (Object.keys(providerMeta) as Provider[]).filter((p) => !isNoAuth(p)).map((provider) => {
     const match = rows.find((row) => row.provider === provider);
     const scopeStatus = buildScopeStatus(provider, match?.scopes);
     const status = (match?.status as IntegrationStatus | undefined) ?? "disconnected";
@@ -118,7 +137,7 @@ function getDefaultScopeStatus(provider: Provider) {
     requiredScopes: [...providerMeta[provider].requiredScopes],
     grantedScopes: [],
     missingScopes: [...providerMeta[provider].requiredScopes],
-    needsConsent: !isTokenBased(provider),
+    needsConsent: !isTokenBased(provider) && !isNoAuth(provider),
   };
 }
 
@@ -127,6 +146,11 @@ function getDerivedWidgetState(
   statusRecord: IntegrationStatusRecord | undefined,
   items: WidgetPayload["items"],
 ): WidgetViewState {
+  // No-auth providers are always "connected": no Connections row, no consent.
+  if (isNoAuth(provider)) {
+    return items.length === 0 ? "empty" : "connected";
+  }
+
   if (!statusRecord || statusRecord.status === "disconnected") {
     return "not_connected";
   }
@@ -148,6 +172,11 @@ function shouldSkipProviderLoad(
   previewState?: WidgetViewState,
 ) {
   if (previewState) {
+    return false;
+  }
+
+  // No-auth providers always load — they have no connection to gate on.
+  if (isNoAuth(provider)) {
     return false;
   }
 
@@ -304,6 +333,12 @@ export async function getWidgetPayload(
       return buildWidgetPayload(provider, statusRecord, items, false, previewState);
     }
 
+    if (provider === "weather") {
+      // `config` carries the chosen city (free text); the adapter geocodes it.
+      const items = await getWeatherItems(userId, accountId, config);
+      return buildWidgetPayload(provider, statusRecord, items, false, previewState);
+    }
+
     const items =
       provider === "linear"
         ? await getLinearItems(userId, accountId)
@@ -356,6 +391,16 @@ export async function getWidgetsResponse(
         // its pinned page id client-side.
         if (provider === "notion") {
           const items = await getNotionRecentPages(userId);
+          return [
+            provider,
+            buildWidgetPayload(provider, statusRecord, items, false, previewState),
+          ] as const;
+        }
+
+        // The bulk fetch has no per-instance config, so Weather serves the
+        // default city; per-instance city is fetched client-side by the widget.
+        if (provider === "weather") {
+          const items = await getWeatherItems(userId);
           return [
             provider,
             buildWidgetPayload(provider, statusRecord, items, false, previewState),

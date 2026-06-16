@@ -18,6 +18,14 @@ export type WidgetInstance = {
   accountId: string | null;
   /** Per-instance prefs, e.g. `{ "gmail-view": "unread" }`. */
   config: Record<string, string>;
+  /**
+   * Explicit cell on the 4-column dashboard grid (FRA-149). Blank cells are
+   * preserved (iOS-18 style), so position is not derived from array order.
+   * Optional for back-compat: legacy layouts lack x,y and get packed once on
+   * load (see normalizeLayout in grid-layout.ts).
+   */
+  x?: number;
+  y?: number;
 };
 
 export const widgetInstanceSchema = z.object({
@@ -25,6 +33,8 @@ export const widgetInstanceSchema = z.object({
   slotId: z.string().refine(isSlotId, "unknown slotId"),
   accountId: z.string().nullable(),
   config: z.record(z.string(), z.string()).default({}),
+  x: z.number().int().min(0).optional(),
+  y: z.number().int().min(0).optional(),
 });
 
 // Shortcut URLs are opened with window.open and rendered as <img> srcs, so the
@@ -42,12 +52,36 @@ export const shortcutSchema = z.object({
 /** A dock shortcut. `url`/`iconUrl` are normalized absolute URLs when present. */
 export type Shortcut = z.infer<typeof shortcutSchema>;
 
-export const dashboardStateSchema = z.object({
+/**
+ * A dashboard page (FRA-140). The dashboard is a list of pages you swipe
+ * between (iOS-style); each page owns its own free-coordinate `layout`. The
+ * `shortcuts` dock is shared across pages (root-level), not per page.
+ */
+export const pageSchema = z.object({
+  id: z.string().min(1),
   layout: z.array(widgetInstanceSchema).default([]),
+});
+
+export type DashboardPage = z.infer<typeof pageSchema>;
+
+export const dashboardStateSchema = z.object({
+  pages: z.array(pageSchema).min(1),
   shortcuts: z.array(shortcutSchema).default([]),
 });
 
 export type DashboardStatePayload = z.infer<typeof dashboardStateSchema>;
+
+/**
+ * The pre-FRA-140 shape: a single flat `layout` with no pages. Server rows and
+ * cached values written before multi-page use this; `normalizeToPages` wraps
+ * them into a one-page payload. Kept for read-compat — we never write it.
+ */
+export const legacyDashboardStateSchema = z.object({
+  layout: z.array(widgetInstanceSchema).default([]),
+  shortcuts: z.array(shortcutSchema).default([]),
+});
+
+export type LegacyDashboardStatePayload = z.infer<typeof legacyDashboardStateSchema>;
 
 /**
  * Soft-migration: each saved SlotId becomes one instance on the default account.
@@ -77,4 +111,44 @@ function prefForSlot(slotId: SlotId, prefs: Record<string, string>): Record<stri
 
 export function defaultInstances(): WidgetInstance[] {
   return slotIdsToInstances([...DEFAULT_LAYOUT]);
+}
+
+/** A fresh page id. Stable per page; drives the dots and nav, like an instanceId. */
+export function newPageId(): string {
+  return crypto.randomUUID();
+}
+
+/** A new empty page (used when adding a page in edit mode). */
+export function emptyPage(): DashboardPage {
+  return { id: newPageId(), layout: [] };
+}
+
+/** The seed for a brand-new user: one page holding the default widgets. */
+export function defaultPages(): DashboardPage[] {
+  return [{ id: newPageId(), layout: defaultInstances() }];
+}
+
+/**
+ * Normalize any persisted/cached value into the multi-page shape (FRA-140).
+ * Accepts the new `{ pages, shortcuts }`, the legacy flat `{ layout, shortcuts }`
+ * (wrapped into one page), or anything unparseable (falls back to defaults).
+ * Guarantees at least one page, since page 1 must always exist.
+ */
+export function normalizeToPages(value: unknown): DashboardStatePayload {
+  const asNew = dashboardStateSchema.safeParse(value);
+  if (asNew.success) {
+    return asNew.data.pages.length > 0
+      ? asNew.data
+      : { pages: defaultPages(), shortcuts: asNew.data.shortcuts };
+  }
+
+  const asLegacy = legacyDashboardStateSchema.safeParse(value);
+  if (asLegacy.success) {
+    return {
+      pages: [{ id: newPageId(), layout: asLegacy.data.layout }],
+      shortcuts: asLegacy.data.shortcuts,
+    };
+  }
+
+  return { pages: defaultPages(), shortcuts: [] };
 }

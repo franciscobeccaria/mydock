@@ -5,7 +5,7 @@ import {
   SiGoogletasks,
   SiNotion,
 } from "@icons-pack/react-simple-icons";
-import { LayoutGrid } from "lucide-react";
+import { CloudSun, LayoutGrid } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import type { Provider } from "@/features/integrations/types";
@@ -30,6 +30,8 @@ export function ProviderIcon({
       return <SiGooglecalendar className={iconClassName} color="#4285F4" />;
     case "notion":
       return <SiNotion className={iconClassName} color="#000000" />;
+    case "weather":
+      return <CloudSun className={cn(iconClassName, "text-[#F59E0B]")} />;
     default:
       return <LayoutGrid className={iconClassName} />;
   }
