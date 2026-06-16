@@ -6,6 +6,7 @@ import { useDashboardState } from "@/components/dashboard/use-dashboard-state";
 import { type WidgetInstance } from "@/components/dashboard/widget-instance";
 import {
   computeMove,
+  computeResize,
   findFirstFreeBlock,
   footprintFor,
   GRID_COLS,
@@ -18,6 +19,7 @@ import {
   WIDGET_CATALOG,
   type SlotId,
   type WidgetCatalogEntry,
+  type WidgetSize,
 } from "@/components/widgets/widget-catalog";
 
 type UseDashboardLayout = {
@@ -36,6 +38,9 @@ type UseDashboardLayout = {
   placeWidgetAt: (instanceId: string, tx: number, ty: number) => void;
   /** Set a single per-instance config value. */
   updateConfig: (instanceId: string, key: string, value: string) => void;
+  /** Change a widget's size, then re-run collision resolution so the new
+   *  footprint can't overlap neighbors or spill past the grid. */
+  resizeWidget: (instanceId: string, size: WidgetSize) => void;
 };
 
 export function useDashboardLayout(): UseDashboardLayout {
@@ -96,6 +101,28 @@ export function useDashboardLayout(): UseDashboardLayout {
     [setLayout],
   );
 
+  const resizeWidget = useCallback(
+    (instanceId: string, size: WidgetSize) => {
+      setLayout((current) => {
+        // Stamp the new size first so computeResize reads the new footprint, then
+        // push down whatever the larger footprint now overlaps.
+        const sized = current.map((inst) =>
+          inst.instanceId === instanceId
+            ? { ...inst, config: { ...inst.config, size } }
+            : inst,
+        );
+        const resolved = computeResize(sized, instanceId, size);
+        if (!resolved) return sized;
+        const byId = new Map(resolved.map((p) => [p.instanceId, p]));
+        return sized.map((inst) => {
+          const p = byId.get(inst.instanceId);
+          return p ? { ...inst, x: p.x, y: p.y } : inst;
+        });
+      });
+    },
+    [setLayout],
+  );
+
   // Duplicates are allowed, so the catalog never disables an entry.
   const availableToAdd = useMemo(() => [...WIDGET_CATALOG], []);
 
@@ -105,5 +132,5 @@ export function useDashboardLayout(): UseDashboardLayout {
   );
   const isActive = useCallback((slotId: SlotId) => activeSlots.has(slotId), [activeSlots]);
 
-  return { layout, availableToAdd, isActive, addWidget, removeWidget, placeWidgetAt, updateConfig };
+  return { layout, availableToAdd, isActive, addWidget, removeWidget, placeWidgetAt, updateConfig, resizeWidget };
 }

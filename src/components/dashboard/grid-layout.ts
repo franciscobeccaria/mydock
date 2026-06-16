@@ -28,19 +28,18 @@ export function footprintFor(size: WidgetSize): { w: number; h: number } {
   return SIZE_FOOTPRINT[size];
 }
 
-/** Read a per-instance size config value, defaulting to large. */
-export function sizeFromConfig(value: string | undefined): WidgetSize {
-  return value && isWidgetSize(value) ? value : "large";
-}
-
 /**
- * An instance's effective size, clamped to what its widget actually supports
- * (guards against a stale config.size after a catalog change).
+ * An instance's effective size. A valid, supported `config.size` wins; otherwise
+ * we fall back to the widget's catalog default — NOT a hardcoded "large" — so the
+ * footprint reserved at add time (`defaultSizeFor`) matches what we render. This
+ * also clamps a stale config.size left over from a catalog change.
  */
 export function instanceSize(instance: WidgetInstance): WidgetSize {
   const entry = CATALOG_BY_ID[instance.slotId];
-  const size = sizeFromConfig(instance.config["size"]);
-  return entry.supportedSizes.includes(size) ? size : defaultSizeFor(entry);
+  const size = instance.config["size"];
+  return size && isWidgetSize(size) && entry.supportedSizes.includes(size)
+    ? size
+    : defaultSizeFor(entry);
 }
 
 /** A widget placed on the grid: its id, top-left cell, and footprint. */
@@ -168,6 +167,30 @@ export function computeMove(
   if (mover.x === x && mover.y === y) return null;
   const next = placed.map((p) => (p.instanceId === movedId ? { ...p, x, y } : p));
   return resolveCollisions(next, movedId);
+}
+
+/**
+ * Resolve where every widget lands when `resizedId` changes footprint to
+ * `nextSize`. The tile keeps its cell but is clamped so the wider/taller block
+ * fits the grid (x into bounds), then overlaps the new footprint covers are
+ * pushed down — the same collision path a move runs, so a resize can never leave
+ * tiles overlapping or spill past the column count. The caller persists both the
+ * new size and the resulting (x,y) of every instance. Returns null if unknown.
+ */
+export function computeResize(
+  layout: WidgetInstance[],
+  resizedId: string,
+  nextSize: WidgetSize,
+  cols: number = GRID_COLS,
+): Placed[] | null {
+  const { w, h } = footprintFor(nextSize);
+  const placed = toPlaced(layout).map((p) =>
+    p.instanceId === resizedId
+      ? { ...p, w, h, x: Math.max(0, Math.min(p.x, cols - w)) }
+      : p,
+  );
+  if (!placed.some((p) => p.instanceId === resizedId)) return null;
+  return resolveCollisions(placed, resizedId);
 }
 
 /**

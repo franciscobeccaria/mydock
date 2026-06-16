@@ -21,17 +21,58 @@ type GeocodeResponse = {
 
 /** A city suggestion for the searchable picker. */
 export type CityOption = {
-  /** Stable value stored on the widget (the query the forecast adapter geocodes). */
+  /**
+   * Stable value stored on the widget: "lat,lon|Label". Storing coordinates (not
+   * the bare name) pins the exact row the user picked, so two same-named cities —
+   * "Córdoba, Argentina" vs "Córdoba, Spain" — never collapse to whichever the
+   * geocoder ranks first at fetch time. The trailing label is the display name
+   * (the forecast API returns no place name, so we carry it here).
+   */
   value: string;
-  /** "Buenos Aires, Argentina" — what the user sees in the list. */
+  /** "Córdoba, Córdoba, Argentina" — what the user sees in the list. */
   label: string;
 };
+
+/** Encode a picked place as "lat,lon|Label". Coords rounded to ~5dp (≈1 m). */
+function toCityValue(lat: number, lon: number, label: string): string {
+  const r = (n: number) => Math.round(n * 1e5) / 1e5;
+  return `${r(lat)},${r(lon)}|${label}`;
+}
+
+/**
+ * Parse a stored config value. New format is "lat,lon|Label" (coords pin the
+ * exact place); a bare name is a legacy value we still geocode at fetch time.
+ */
+function parseCityValue(
+  value: string,
+): { lat: number; lon: number; name?: string } | { name: string } {
+  const [coords, ...rest] = value.split("|");
+  const m = coords.trim().match(/^(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)$/);
+  if (m) {
+    const lat = Number(m[1]);
+    const lon = Number(m[2]);
+    if (Math.abs(lat) <= 90 && Math.abs(lon) <= 180) {
+      return { lat, lon, name: rest.join("|").trim() || undefined };
+    }
+  }
+  return { name: value.trim() }; // legacy bare name → geocode below
+}
+
+/**
+ * Display name for a stored config value: the "|Label" part of the new coord
+ * format, or the bare string itself (legacy / typed). Used to show a clean city
+ * name in the closed picker instead of the raw "lat,lon|Label".
+ */
+export function cityLabelFromValue(value: string): string {
+  const parsed = parseCityValue(value);
+  return "lat" in parsed ? parsed.name ?? value : parsed.name;
+}
 
 /**
  * Search cities by name for the picker autocomplete (Open-Meteo geocoding, no
  * key). Returns several matches with region/country so duplicates are
- * distinguishable. The stored value is the city name (re-geocoded at fetch
- * time), keeping the instance config a simple human string.
+ * distinguishable. The stored value is the chosen place's coordinates, so the
+ * forecast fetch pins the exact row picked instead of re-geocoding a bare name.
  */
 export async function searchCities(query: string): Promise<CityOption[]> {
   const q = query.trim();
@@ -40,10 +81,10 @@ export async function searchCities(query: string): Promise<CityOption[]> {
   const res = await fetch(url, { cache: "no-store" });
   if (!res.ok) throw new Error("city search failed");
   const data = (await res.json()) as GeocodeResponse;
-  return (data.results ?? []).map((r) => ({
-    value: r.name,
-    label: [r.name, r.admin1, r.country].filter(Boolean).join(", "),
-  }));
+  return (data.results ?? []).map((r) => {
+    const label = [r.name, r.admin1, r.country].filter(Boolean).join(", ");
+    return { value: toCityValue(r.latitude, r.longitude, label), label };
+  });
 }
 
 type ForecastResponse = {
@@ -91,8 +132,15 @@ export async function getWeatherItems(
   _accountId?: string | null,
   city?: string | null,
 ): Promise<WidgetItem[]> {
-  const query = city?.trim() || DEFAULT_CITY;
-  const place = await geocode(query);
+  // A stored value pins the place by coords ("lat,lon|Label"); a bare name (no
+  // config, or a legacy value) is geocoded. Coords skip geocoding entirely, so
+  // the forecast lands on exactly the city the user picked.
+  const raw = city?.trim();
+  const parsed = raw ? parseCityValue(raw) : { name: DEFAULT_CITY };
+  const place =
+    "lat" in parsed
+      ? { name: parsed.name ?? DEFAULT_CITY, lat: parsed.lat, lon: parsed.lon }
+      : await geocode(parsed.name || DEFAULT_CITY);
 
   const params = new URLSearchParams({
     latitude: String(place.lat),

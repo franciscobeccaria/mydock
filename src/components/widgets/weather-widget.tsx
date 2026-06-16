@@ -16,7 +16,7 @@ import {
   ComboboxItem,
   ComboboxList,
 } from "@/components/ui/combobox";
-import type { CityOption } from "@/features/integrations/providers/weather/adapter";
+import { cityLabelFromValue, type CityOption } from "@/features/integrations/providers/weather/adapter";
 import type { WeatherSnapshot } from "@/features/integrations/providers/weather/types";
 import type { WidgetProps } from "@/features/integrations/types";
 
@@ -103,7 +103,9 @@ function CityPicker({
     setQuery("");
   }
 
-  const inputValue = open ? query : current ?? "";
+  // Closed: show the clean city name (the stored value is "lat,lon|Label").
+  // Open: show what the user is typing.
+  const inputValue = open ? query : current ? cityLabelFromValue(current) : "";
 
   return (
     <Combobox

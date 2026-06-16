@@ -357,7 +357,8 @@ function WidgetGrid({
   // Active instances, order, add/remove/config all live in the layout hook,
   // backed by per-user Supabase state (no client cache; FRA-140). The layout is
   // already scoped to the active page by the store.
-  const { layout, addWidget, removeWidget, placeWidgetAt, updateConfig } = useDashboardLayout();
+  const { layout, addWidget, removeWidget, placeWidgetAt, updateConfig, resizeWidget } =
+    useDashboardLayout();
 
   // Multi-page nav (FRA-140). `pages`/`activePageId` drive the dots; the grid
   // renders only the active page's `layout`. The dock (shortcuts) is shared.
@@ -434,11 +435,17 @@ function WidgetGrid({
     // Also (re)assert the active id here: onDragStart is the canonical place, but
     // asserting on the first over makes the drag affordances robust regardless.
     setActiveId(String(active.id));
-    if (!over) return;
+    if (!over) return; // off the grid entirely — keep the last preview
     const cell = parseCellId(String(over.id));
     if (!cell) return;
     const resolved = computeMove(layout, String(active.id), cell.cx, cell.cy);
-    if (!resolved) return; // no-op (same cell) — keep the last preview
+    if (!resolved) {
+      // Hovering the tile's own (clamped) home cell: a release here must CANCEL,
+      // not re-commit the previous target — so clear the staged move outright.
+      lastTargetRef.current = null;
+      setPreview(null);
+      return;
+    }
     lastTargetRef.current = cell;
     setPreview(new Map(resolved.map((p) => [p.instanceId, { x: p.x, y: p.y }])));
   }
@@ -510,7 +517,7 @@ function WidgetGrid({
       <SizeControl
         sizes={entry.supportedSizes}
         current={current}
-        onSelect={(size) => updateConfig(instance.instanceId, "size", size)}
+        onSelect={(size) => resizeWidget(instance.instanceId, size)}
       />
     );
   }
