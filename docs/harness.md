@@ -11,6 +11,7 @@ MyDock's instantiation of the shared journey from [harness-library](https://gith
 | Stage | MyDock intensity | How |
 |-------|-----------------|-----|
 | 0. Product input | normal | Linear ticket (FRA-xxx) or direct idea; check design status (see Design routing) |
+| 0.5. Grill | **always** | `/grill` interrogates the input — idea *or* written ticket — before anything else. Small question batches, one round at a time, assuming it doesn't yet understand. Surfaces ambiguities, edge cases, contradictions; resolves open questions *here* so the spec enters sharp. Output is shared understanding, not code/mock/ticket. (Matt Pocock grill-me, adapted.) |
 | 1. Framing | normal | classify: feature / bug / migration / UI-heavy; route by design status; decide if research is needed |
 | 2. Research | **only when uncertainty exists** | Context7, official docs, web. Mandatory for upgrades (Next.js majors, Supabase changes) |
 | 3. Spec | normal | one spec file (see Artifacts) — no multi-file ceremony |
@@ -23,7 +24,7 @@ MyDock's instantiation of the shared journey from [harness-library](https://gith
 
 ## Design routing
 
-Every issue gets classified by design status during framing — this decides whether a design stage runs before the spec:
+The grill (stage 0.5) feeds this routing: its resolved understanding is what determines the case below, and — for the "needs design, none exists" route — it's what `/idea-to-feature` iterates against. Classification happens during framing using that understanding:
 
 | Case | Route |
 |------|-------|
@@ -67,7 +68,7 @@ Engram memory · Context7 · shadcn MCP · `gh` CLI · Linear · Vercel CLI · a
 
 These are not just available — stage 0 *uses* them unprompted: Linear MCP fetches the ticket, engram (`mem_search`, project `mydock`) recalls prior work, `gh` pulls recent PRs/commits for the touched surfaces, and related specs in `docs/specs/` get read. Prompts never need to name these tools; naming a tool is reserved for exceptions outside the routine set.
 
-Harness-owned skills/commands are **vendored in `.claude/`** (`skills/idea-to-feature/`, `commands/commit-message.md`) — the repo is the harness's single source. Never depend on machine-local `~/.claude` for harness behavior; if the harness references a component, copy it into the repo.
+Harness-owned skills/commands are **vendored in `.claude/`** (`skills/grill/`, `skills/idea-to-feature/`, `commands/commit-message.md`) — the repo is the harness's single source. Never depend on machine-local `~/.claude` for harness behavior; if the harness references a component, copy it into the repo.
 
 ## Iteration rule
 
