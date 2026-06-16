@@ -3,23 +3,24 @@
 import { useQuery } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Minus, Plus } from "lucide-react";
+import { Minus } from "lucide-react";
 import {
   DndContext,
   KeyboardSensor,
   PointerSensor,
-  closestCenter,
+  closestCorners,
+  pointerWithin,
+  useDraggable,
+  useDroppable,
   useSensor,
   useSensors,
+  type CollisionDetection,
   type DragEndEvent,
+  type DragOverEvent,
+  type DragStartEvent,
   type PointerSensorOptions,
 } from "@dnd-kit/core";
-import {
-  SortableContext,
-  rectSortingStrategy,
-  sortableKeyboardCoordinates,
-  useSortable,
-} from "@dnd-kit/sortable";
+import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 
 import { useDashboardMode } from "@/components/dashboard/dashboard-mode-context";
@@ -28,9 +29,16 @@ import { ShortcutsRow } from "@/components/dashboard/shortcuts-row";
 import { useDashboardLayout } from "@/components/dashboard/use-dashboard-layout";
 import { DashboardStateProvider } from "@/components/dashboard/use-dashboard-state";
 import { type WidgetInstance } from "@/components/dashboard/widget-instance";
+import {
+  computeMove,
+  footprintFor,
+  GRID_COLS,
+  instanceSize,
+  maxOccupiedRow,
+} from "@/components/dashboard/grid-layout";
 import { deriveLinearAssignedUrl } from "@/components/widgets/linear-widget";
 import { WidgetCatalogDialog, type WidgetAccount } from "@/components/widgets/widget-catalog-dialog";
-import { CATALOG_BY_ID } from "@/components/widgets/widget-catalog";
+import { CATALOG_BY_ID, type WidgetSize } from "@/components/widgets/widget-catalog";
 import {
   CONFIG_KEY,
   fetchWidget,
@@ -50,17 +58,46 @@ const INTERACTIVE =
 /** Stable empty sensor descriptor list — passed to DndContext to suspend dragging. */
 const NO_SENSORS: ReturnType<typeof useSensors> = [];
 
+/** CSS Grid explicit placement for a footprint at cell (x,y). Lines are 1-based. */
+function cellStyle(x: number, y: number, size: WidgetSize): React.CSSProperties {
+  const { w, h } = footprintFor(size);
+  return {
+    gridColumn: `${x + 1} / span ${w}`,
+    gridRow: `${y + 1} / span ${h}`,
+  };
+}
+
+/** Drop-target cell ids are "cell:cx:cy"; parse one back to coordinates. */
+function parseCellId(id: string): { cx: number; cy: number } | null {
+  const m = /^cell:(\d+):(\d+)$/.exec(id);
+  return m ? { cx: Number(m[1]), cy: Number(m[2]) } : null;
+}
+
+/**
+ * Resolve the drop target from the POINTER, not the dragged tile's box — so the
+ * highlighted cell tracks the cursor (what the user is aiming at), and the final
+ * drop matches the live preview. Falls back to closestCorners when the pointer is
+ * outside every cell (e.g. dragging past the grid edge).
+ */
+const cellCollision: CollisionDetection = (args) => {
+  const byPointer = pointerWithin(args);
+  return byPointer.length > 0 ? byPointer : closestCorners(args);
+};
+
 /** View mode: clicking the widget opens its destination (unless an inner control was hit). */
 function WidgetSlot({
   children,
   onOpen,
+  style,
 }: {
   children: React.ReactNode;
   onOpen: () => void;
+  style?: React.CSSProperties;
 }) {
   const pointerOnInteractive = useRef(false);
   return (
     <div
+      style={style}
       onPointerDown={(event) => {
         pointerOnInteractive.current = !!(event.target as HTMLElement).closest(INTERACTIVE);
       }}
@@ -99,34 +136,39 @@ export class ControlAwarePointerSensor extends PointerSensor {
   ];
 }
 
-/** Edit mode: the widget jiggles and is draggable; clicks do not open it. */
-function SortableWidget({
+/** Edit mode: the widget jiggles and is draggable to any grid cell; clicks don't open it. */
+function PositionedWidget({
   id,
-  index,
+  jiggleSeed,
   children,
   onRemove,
+  style,
+  sizeControl,
 }: {
   id: string;
-  index: number;
+  /** Seeds the jiggle stagger so neighbors don't move in unison. */
+  jiggleSeed: number;
   children: React.ReactNode;
   onRemove: () => void;
+  /** Explicit grid placement (gridColumn/gridRow) for this tile's cell + size. */
+  style?: React.CSSProperties;
+  /** Optional size picker, rendered as a clickable corner control. */
+  sizeControl?: React.ReactNode;
 }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id,
-  });
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id });
 
   // The whole tile is the drag handle in edit mode — grabbing anywhere on the widget
   // moves it (iOS-style). Inner controls are non-interactive while editing.
   //
-  // dnd-kit drives the layout transform on the OUTER element. The jiggle animation
-  // lives on an INNER element so its `rotate()` keyframes don't get clobbered by the
-  // inline drag transform (an element can only have one `transform`).
+  // The OUTER element holds the explicit CSS-grid placement (gridColumn/gridRow) plus
+  // the live drag translate; the jiggle animation lives on an INNER element so its
+  // `rotate()` keyframes aren't clobbered by the translate (one `transform` per element).
   return (
     <div
       ref={setNodeRef}
       style={{
-        transform: CSS.Transform.toString(transform),
-        transition,
+        ...style,
+        transform: CSS.Translate.toString(transform),
       }}
       {...attributes}
       {...listeners}
@@ -154,17 +196,31 @@ function SortableWidget({
         </button>
       ) : null}
 
+      {/* Size picker, bottom-center. Sibling of the jiggle wrapper so it escapes
+          the pointer-events-none rule. `data-no-drag` keeps clicks from dragging. */}
+      {!isDragging && sizeControl ? (
+        <div
+          data-no-drag
+          onPointerDown={(event) => event.stopPropagation()}
+          className="absolute -bottom-3 left-1/2 z-20 -translate-x-1/2"
+        >
+          {sizeControl}
+        </div>
+      ) : null}
+
       <div
         // Stagger each widget's jiggle so they don't move in unison, like iOS.
-        style={{ animationDelay: `${(index % 4) * -0.09}s` }}
+        style={{ animationDelay: `${(jiggleSeed % 4) * -0.09}s` }}
         className={cn(
           // Inner controls are inert while editing so the whole surface drags —
           // except elements marked [data-no-drag] (header selects), which stay
           // interactive and (via ControlAwarePointerSensor) don't start a drag.
           "h-full select-none transition-shadow duration-150 [&_*]:pointer-events-none [&_[data-no-drag]]:pointer-events-auto [&_[data-no-drag]_*]:pointer-events-auto",
           // Jiggle at rest; while dragging, kill the animation so the lift transform applies.
+          // `rounded-[20px]` matches the card so the lift shadow follows the rounded
+          // corners (otherwise the shadow casts a square halo at the bottom).
           isDragging
-            ? "scale-[1.03] opacity-90 shadow-[0_18px_40px_rgba(17,24,39,0.18)]"
+            ? "scale-[1.03] rounded-[20px] opacity-90 shadow-[0_18px_40px_rgba(17,24,39,0.18)]"
             : "widget-jiggle",
         )}
       >
@@ -199,14 +255,18 @@ function InstanceWidget({
   // Gmail's view is a server-side query param; key it so All/Unread fetch apart.
   const gmailView = slotId === "gmail" ? configValue ?? "all" : undefined;
 
-  // The Notion Page widget's config is its pinned page id, sent to the server as
-  // the generic `config` param so the registry serves that page's content.
-  const notionPageId = slotId === "notion_page" ? configValue : undefined;
+  // The Notion Page widget's config is its pinned page id, and the Weather
+  // widget's is its city — both ride the generic `config` server param.
+  const fetchConfig =
+    slotId === "notion_page" || slotId === "weather" ? configValue : undefined;
+
+  // The chosen iOS size (FRA-149), clamped to the widget's supported sizes.
+  const size = instanceSize(instance);
 
   // Keyed by accountId so two instances on different connections cache apart.
   const query = useQuery({
-    queryKey: widgetQueryKey(slotId, gmailView, instance.accountId, notionPageId),
-    queryFn: () => fetchWidget(provider, gmailView, instance.accountId, notionPageId),
+    queryKey: widgetQueryKey(slotId, gmailView, instance.accountId, fetchConfig),
+    queryFn: () => fetchWidget(provider, gmailView, instance.accountId, fetchConfig),
     staleTime: widgetStaleTime(provider),
     gcTime: 15 * 60_000,
   });
@@ -220,6 +280,7 @@ function InstanceWidget({
     isRetrying: query.isFetching,
     configValue,
     onConfigChange: setConfig,
+    size,
   });
 }
 
@@ -235,7 +296,7 @@ function WidgetGrid({
   connections: ConnectionsByProvider;
 }) {
   const router = useRouter();
-  const { isEditing } = useDashboardMode();
+  const { isEditing, catalogOpen, setCatalogOpen } = useDashboardMode();
   // While a header picker popup is open, suspend the drag sensors. The popup is
   // portaled outside the tile, so the click that dismisses it lands on a tile
   // and is also seen by dnd-kit, which starts/cancels a drag whose pointer cycle
@@ -281,19 +342,20 @@ function WidgetGrid({
 
   // Which catalog app groups have a backing connection. Google-derived apps
   // (gmail / tasks / calendar) share the single google connection list; linear
-  // and notion map to their own connection lists.
+  // and notion map to their own connection lists. Weather needs no connection
+  // (public Open-Meteo) so it's always available — never locked behind a CTA.
   const connectedByProvider: Record<string, boolean> = {
     linear: connections.linear.length > 0,
     gmail: connections.google.length > 0,
     google_tasks: connections.google.length > 0,
     google_calendar: connections.google.length > 0,
     notion: connections.notion.length > 0,
+    weather: true,
   };
 
   // Active instances, order, add/remove/config all live in the layout hook, now
   // backed by per-user Supabase state (with a localStorage cache).
-  const { layout, addWidget, removeWidget, reorder, updateConfig } = useDashboardLayout();
-  const [catalogOpen, setCatalogOpen] = useState(false);
+  const { layout, addWidget, removeWidget, placeWidgetAt, updateConfig } = useDashboardLayout();
 
   // Linear's catalog destination is the generic https://linear.app/; when issues
   // have loaded we resolve the user's own assigned-issues view from their URLs.
@@ -311,10 +373,70 @@ function WidgetGrid({
   // dismiss click can't start a drag (see isPickerOpen above).
   const sensors = isPickerOpen ? NO_SENSORS : activeSensors;
 
-  function handleDragEnd(event: DragEndEvent) {
+  // Live preview positions during a drag (instanceId → cell), so the OTHER widgets
+  // reflow in real time as you hover — iOS-style — instead of only on drop. Null
+  // when not dragging. The dragged tile itself isn't in here (dnd-kit translates it
+  // under the cursor); it keeps its committed cell until the drop lands.
+  const [preview, setPreview] = useState<Map<string, { x: number; y: number }> | null>(null);
+  // The widget currently being dragged. It keeps its committed cell (dnd-kit
+  // translates it under the cursor), so it's excluded from the live reflow.
+  const [activeId, setActiveId] = useState<string | null>(null);
+  // The last cell the drag hovered. We commit THIS on drop — not the final
+  // `over` — because on release the dragged tile's translated rect can resolve
+  // to a different (distant) cell than the one the live preview was showing.
+  const lastTargetRef = useRef<{ cx: number; cy: number } | null>(null);
+
+  function handleDragStart(event: DragStartEvent) {
+    setActiveId(String(event.active.id));
+    lastTargetRef.current = null;
+  }
+
+  // As the dragged widget hovers a cell, compute the would-be layout (mover placed
+  // there + push-down) and stage it as the preview — exactly what the drop commits.
+  function handleDragOver(event: DragOverEvent) {
     const { active, over } = event;
-    if (!over || active.id === over.id) return;
-    reorder(active.id as string, over.id as string);
+    // Also (re)assert the active id here: onDragStart is the canonical place, but
+    // asserting on the first over makes the drag affordances robust regardless.
+    setActiveId(String(active.id));
+    if (!over) return;
+    const cell = parseCellId(String(over.id));
+    if (!cell) return;
+    const resolved = computeMove(layout, String(active.id), cell.cx, cell.cy);
+    if (!resolved) return; // no-op (same cell) — keep the last preview
+    lastTargetRef.current = cell;
+    setPreview(new Map(resolved.map((p) => [p.instanceId, { x: p.x, y: p.y }])));
+  }
+
+  function handleDragEnd(event: DragEndEvent) {
+    const target = lastTargetRef.current;
+    setPreview(null);
+    setActiveId(null);
+    lastTargetRef.current = null;
+    // Commit the last previewed cell so the drop matches what the user saw.
+    if (target) placeWidgetAt(String(event.active.id), target.cx, target.cy);
+  }
+
+  function handleDragCancel() {
+    setPreview(null);
+    setActiveId(null);
+    lastTargetRef.current = null;
+  }
+
+  // The instance being dragged + where it will land (its preview cell). Drives
+  // the destination placeholder so the user sees exactly which cell + footprint
+  // the widget drops into, before releasing.
+  const activeInstance = activeId
+    ? layout.find((i) => i.instanceId === activeId) ?? null
+    : null;
+  const dropCell = activeId ? preview?.get(activeId) ?? null : null;
+
+  /** The cell a tile should render at right now: its preview position mid-drag,
+   *  else its committed (x,y). The dragged tile keeps its committed cell — dnd-kit
+   *  moves it via transform, so it must not also jump to the preview cell. */
+  function renderCell(instance: WidgetInstance): { x: number; y: number } {
+    const committed = { x: instance.x ?? 0, y: instance.y ?? 0 };
+    if (instance.instanceId === activeId) return committed;
+    return preview?.get(instance.instanceId) ?? committed;
   }
 
   function openWidget(instance: WidgetInstance) {
@@ -342,6 +464,21 @@ function WidgetGrid({
     );
   }
 
+  // Edit-mode size picker, shown only for widgets that support more than one
+  // size (the rest are large-only, so there's nothing to choose).
+  function renderSizeControl(instance: WidgetInstance) {
+    const entry = CATALOG_BY_ID[instance.slotId];
+    if (entry.supportedSizes.length < 2) return null;
+    const current = instanceSize(instance);
+    return (
+      <SizeControl
+        sizes={entry.supportedSizes}
+        current={current}
+        onSelect={(size) => updateConfig(instance.instanceId, "size", size)}
+      />
+    );
+  }
+
   // How many widget instances each app currently has on the dashboard, so the
   // catalog can show a subtle "N added" badge per app section.
   const addedByApp = layout.reduce<Record<string, number>>((acc, instance) => {
@@ -350,7 +487,14 @@ function WidgetGrid({
     return acc;
   }, {});
 
-  const gridClassName = "grid grid-cols-1 gap-4 lg:grid-cols-2";
+  // Free coordinate grid (FRA-149): 4 fixed columns, fixed-height rows, and NO
+  // auto-flow — every tile is placed by explicit gridColumn/gridRow from its
+  // (x,y), so blank cells stay blank (iOS-18 style). Desktop-only for v1.
+  const gridClassName = "grid grid-cols-4 gap-4 auto-rows-[167px]";
+
+  // The grid is as tall as the lowest occupied row, plus spare rows so there's
+  // always empty space to drop into (and to grow downward).
+  const rowCount = maxOccupiedRow(layout) + 2;
 
   if (!isEditing) {
     return (
@@ -363,7 +507,11 @@ function WidgetGrid({
         ) : (
           <div className={gridClassName}>
             {layout.map((instance) => (
-              <WidgetSlot key={instance.instanceId} onOpen={() => openWidget(instance)}>
+              <WidgetSlot
+                key={instance.instanceId}
+                onOpen={() => openWidget(instance)}
+                style={cellStyle(instance.x ?? 0, instance.y ?? 0, instanceSize(instance))}
+              >
                 {renderInstance(instance)}
               </WidgetSlot>
             ))}
@@ -380,26 +528,47 @@ function WidgetGrid({
       <ShortcutsRow isEditing />
       <DndContext
         sensors={sensors}
-        collisionDetection={closestCenter}
+        collisionDetection={cellCollision}
+        onDragStart={handleDragStart}
+        onDragOver={handleDragOver}
         onDragEnd={handleDragEnd}
+        onDragCancel={handleDragCancel}
       >
-        {/* The "+" tile is deliberately NOT part of `items`, so dnd-kit never
-            treats it as sortable or as a drop target. */}
-        <SortableContext items={layout.map((i) => i.instanceId)} strategy={rectSortingStrategy}>
-          <div className={gridClassName}>
-            {layout.map((instance, index) => (
-              <SortableWidget
+        <div className={cn(gridClassName, "relative")} data-dragging={activeId ?? "none"}>
+          {/* Empty drop-target cells behind the tiles: every (cx,cy) on the grid.
+              `event.over` resolves straight to a cell, so no pixel measuring.
+              While dragging, the cells show a faint 1×1 reference grid. */}
+          <DropCells cols={GRID_COLS} rows={rowCount} showGrid={activeId !== null} />
+
+          {/* Destination placeholder: a filled highlight at the cell + exact
+              footprint where the dragged widget will land, shown before release. */}
+          {activeInstance && dropCell ? (
+            <div
+              aria-hidden
+              style={{
+                ...cellStyle(dropCell.x, dropCell.y, instanceSize(activeInstance)),
+                zIndex: 1,
+              }}
+              className="pointer-events-none rounded-[20px] border-2 border-primary/40 bg-primary/10"
+            />
+          ) : null}
+
+          {layout.map((instance, index) => {
+            const cell = renderCell(instance);
+            return (
+              <PositionedWidget
                 key={instance.instanceId}
                 id={instance.instanceId}
-                index={index}
+                jiggleSeed={cell.x + cell.y + index}
+                style={cellStyle(cell.x, cell.y, instanceSize(instance))}
+                sizeControl={renderSizeControl(instance)}
                 onRemove={() => removeWidget(instance.instanceId)}
               >
                 {renderInstance(instance)}
-              </SortableWidget>
-            ))}
-            <AddWidgetTile onClick={() => setCatalogOpen(true)} />
-          </div>
-        </SortableContext>
+              </PositionedWidget>
+            );
+          })}
+        </div>
       </DndContext>
 
       <WidgetCatalogDialog
@@ -445,16 +614,71 @@ export default function WidgetGridWithState({
   );
 }
 
-/** Edit-mode-only placeholder tile that opens the widget catalog. */
-function AddWidgetTile({ onClick }: { onClick: () => void }) {
+/** One empty droppable grid cell at (cx,cy). Drop resolves `event.over` here.
+ *  While dragging, it shows a faint 1×1 reference border so the user can see the
+ *  grid and judge which cell the widget will land in (especially over empty space). */
+function DropCell({ cx, cy, showGrid }: { cx: number; cy: number; showGrid: boolean }) {
+  const { setNodeRef } = useDroppable({ id: `cell:${cx}:${cy}` });
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="flex h-[350px] w-full cursor-pointer flex-col items-center justify-center gap-2 rounded-[20px] border-2 border-dashed border-[#E7E7EA] bg-transparent text-[#A1A1AA] transition-colors hover:border-[#D4D4D8] hover:text-[#71717A]"
-    >
-      <Plus className="size-6" />
-      <span className="text-sm font-medium">Add widget</span>
-    </button>
+    <div
+      ref={setNodeRef}
+      // Behind the tiles (z-0); placed on the same grid lines so each occupies
+      // exactly one cell. Pointer-events stay on so dnd-kit can resolve the drop.
+      style={{ gridColumn: `${cx + 1}`, gridRow: `${cy + 1}`, zIndex: 0 }}
+      className={cn(
+        "rounded-xl transition-colors",
+        showGrid && "border border-dashed border-[#E7E7EA]",
+      )}
+      aria-hidden
+    />
+  );
+}
+
+/** The full layer of empty drop cells covering cols × rows, behind the tiles.
+ *  `showGrid` reveals the 1×1 reference grid (only while dragging). */
+function DropCells({ cols, rows, showGrid }: { cols: number; rows: number; showGrid: boolean }) {
+  const cells: React.ReactNode[] = [];
+  for (let cy = 0; cy < rows; cy++) {
+    for (let cx = 0; cx < cols; cx++) {
+      cells.push(<DropCell key={`${cx}:${cy}`} cx={cx} cy={cy} showGrid={showGrid} />);
+    }
+  }
+  return <>{cells}</>;
+}
+
+/** Compact S/M/L segmented picker shown under a widget in edit mode. */
+function SizeControl({
+  sizes,
+  current,
+  onSelect,
+}: {
+  sizes: readonly WidgetSize[];
+  current: WidgetSize;
+  onSelect: (size: WidgetSize) => void;
+}) {
+  const LETTER: Record<WidgetSize, string> = { small: "S", medium: "M", large: "L" };
+  return (
+    <div className="flex items-center gap-0.5 rounded-full border border-[#E7E7EA] bg-white p-0.5 shadow-sm">
+      {sizes.map((size) => (
+        <button
+          key={size}
+          type="button"
+          aria-label={`Set ${size} size`}
+          aria-pressed={size === current}
+          onClick={(event) => {
+            event.stopPropagation();
+            onSelect(size);
+          }}
+          className={cn(
+            "flex size-6 cursor-pointer items-center justify-center rounded-full text-[11px] font-semibold transition-colors",
+            size === current
+              ? "bg-[#18181B] text-white"
+              : "text-[#71717A] hover:bg-[#F4F4F5]",
+          )}
+        >
+          {LETTER[size]}
+        </button>
+      ))}
+    </div>
   );
 }

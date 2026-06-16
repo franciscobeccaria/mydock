@@ -4,10 +4,13 @@ export const providers = [
   "google_tasks",
   "google_calendar",
   "notion",
+  // No-auth, always-connected provider: public Open-Meteo data, never appears in
+  // Connections (see NO_AUTH_PROVIDERS in registry.ts).
+  "weather",
 ] as const;
 
 export type Provider = (typeof providers)[number];
-export type GoogleCapabilityProvider = Exclude<Provider, "linear" | "notion">;
+export type GoogleCapabilityProvider = Exclude<Provider, "linear" | "notion" | "weather">;
 
 export type WidgetViewState =
   | "loading"
@@ -66,6 +69,11 @@ export type WidgetProps = {
   /** Re-fetch this widget's data — wired to the error state's "Try again" action. */
   onRetry?: () => void;
   isRetrying?: boolean;
+  /**
+   * iOS-style size for widgets that render multiple layouts (FRA-149). Absent or
+   * "large" → today's full tile. Widgets that only support `large` ignore it.
+   */
+  size?: "small" | "medium" | "large";
   /**
    * Per-instance config for widgets with a header control (Gmail view, Tasks
    * list, Linear project). Lifted to the grid so it can key the per-config fetch

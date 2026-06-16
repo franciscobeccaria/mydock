@@ -9,20 +9,30 @@ type DashboardModeContextValue = {
   isEditing: boolean;
   setMode: (mode: DashboardMode) => void;
   toggleMode: () => void;
+  /** Add-widget catalog dialog open state. The trigger lives in the sidebar
+   *  (outside the grid), so it's lifted here where both can reach it. */
+  catalogOpen: boolean;
+  setCatalogOpen: (open: boolean) => void;
 };
 
 const DashboardModeContext = createContext<DashboardModeContextValue | null>(null);
 
 export function DashboardModeProvider({ children }: { children: React.ReactNode }) {
   const [mode, setMode] = useState<DashboardMode>("view");
+  const [catalogOpen, setCatalogOpen] = useState(false);
 
   const toggleMode = useCallback(() => {
-    setMode((current) => (current === "view" ? "edit" : "view"));
+    setMode((current) => {
+      const next = current === "view" ? "edit" : "view";
+      // Leaving edit mode closes the catalog so it can't linger in view mode.
+      if (next === "view") setCatalogOpen(false);
+      return next;
+    });
   }, []);
 
   const value = useMemo<DashboardModeContextValue>(
-    () => ({ mode, isEditing: mode === "edit", setMode, toggleMode }),
-    [mode, toggleMode],
+    () => ({ mode, isEditing: mode === "edit", setMode, toggleMode, catalogOpen, setCatalogOpen }),
+    [mode, toggleMode, catalogOpen],
   );
 
   return (

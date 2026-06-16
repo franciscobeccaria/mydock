@@ -11,12 +11,29 @@ export type SlotId =
   | "calendar_upcoming"
   | "calendar_month"
   | "notion_recent"
-  | "notion_page";
+  | "notion_page"
+  | "weather";
+
+// iOS-style fixed widget sizes (FRA-149). Large = today's tile (1 grid column,
+// full height). Medium = 1 column, half height. Small = quarter width, square.
+export type WidgetSize = "small" | "medium" | "large";
+
+export const WIDGET_SIZES: readonly WidgetSize[] = ["small", "medium", "large"] as const;
+
+export function isWidgetSize(value: string): value is WidgetSize {
+  return (WIDGET_SIZES as readonly string[]).includes(value);
+}
 
 // An "app" groups the widgets a single integration offers. Today most apps
 // expose one widget; the calendar exposes three. The catalog dialog is grouped
 // by app, so this scales as we add more apps and more widgets per app.
-export type AppId = "linear" | "gmail" | "google_calendar" | "google_tasks" | "notion";
+export type AppId =
+  | "linear"
+  | "gmail"
+  | "google_calendar"
+  | "google_tasks"
+  | "notion"
+  | "weather";
 
 export type WidgetCatalogEntry = {
   id: SlotId;
@@ -30,7 +47,18 @@ export type WidgetCatalogEntry = {
   description: string;
   /** External destination opened on click in view mode. */
   destination: string;
+  /**
+   * Sizes this widget can render (FRA-149). Most widgets only support `large`
+   * (today's tile) until a smaller layout is designed per app; Weather supports
+   * all three. The first entry is the default size when the widget is added.
+   */
+  supportedSizes: readonly WidgetSize[];
 };
+
+/** A widget's default size = the first size it declares support for. */
+export function defaultSizeFor(entry: WidgetCatalogEntry): WidgetSize {
+  return entry.supportedSizes[0] ?? "large";
+}
 
 export type AppGroup = {
   id: AppId;
@@ -41,6 +69,7 @@ export type AppGroup = {
 
 const CALENDAR_URL = "https://calendar.google.com/calendar/u/0/r";
 const NOTION_URL = "https://www.notion.so/";
+const WEATHER_URL = "https://open-meteo.com/";
 
 const APP_LABELS: Record<AppId, string> = {
   linear: "Linear",
@@ -48,7 +77,12 @@ const APP_LABELS: Record<AppId, string> = {
   google_calendar: "Google Calendar",
   google_tasks: "Google Tasks",
   notion: "Notion",
+  weather: "Weather",
 };
+
+// Most widgets render only as the full-size tile for now (per-app smaller
+// layouts come later); Weather is the first to support all three sizes.
+const LARGE_ONLY = ["large"] as const;
 
 // Single source of truth for addable widgets. Do NOT import the server-side
 // registry here — this module is consumed by client components.
@@ -61,6 +95,7 @@ export const WIDGET_CATALOG: readonly WidgetCatalogEntry[] = [
     description:
       "Issues assigned to you, ordered by priority. Filter by project or see them all.",
     destination: "https://linear.app/",
+    supportedSizes: LARGE_ONLY,
   },
   {
     id: "gmail",
@@ -69,6 +104,7 @@ export const WIDGET_CATALOG: readonly WidgetCatalogEntry[] = [
     label: "Inbox",
     description: "The messages that matter most, without leaving your dashboard.",
     destination: "https://mail.google.com/mail/u/0/#inbox",
+    supportedSizes: LARGE_ONLY,
   },
   {
     id: "calendar_today",
@@ -77,6 +113,7 @@ export const WIDGET_CATALOG: readonly WidgetCatalogEntry[] = [
     label: "Today's agenda",
     description: "Everything on your plate for today, in order.",
     destination: CALENDAR_URL,
+    supportedSizes: LARGE_ONLY,
   },
   {
     id: "calendar_upcoming",
@@ -85,6 +122,7 @@ export const WIDGET_CATALOG: readonly WidgetCatalogEntry[] = [
     label: "Upcoming week",
     description: "The next seven days of events at a glance.",
     destination: CALENDAR_URL,
+    supportedSizes: LARGE_ONLY,
   },
   {
     id: "calendar_month",
@@ -93,6 +131,7 @@ export const WIDGET_CATALOG: readonly WidgetCatalogEntry[] = [
     label: "Month grid",
     description: "A full month overview to spot busy stretches.",
     destination: CALENDAR_URL,
+    supportedSizes: LARGE_ONLY,
   },
   {
     id: "google_tasks",
@@ -101,6 +140,7 @@ export const WIDGET_CATALOG: readonly WidgetCatalogEntry[] = [
     label: "Tasks",
     description: "Keep your top to-dos in view while you work.",
     destination: "https://tasks.google.com/tasks/",
+    supportedSizes: LARGE_ONLY,
   },
   {
     id: "notion_recent",
@@ -109,6 +149,7 @@ export const WIDGET_CATALOG: readonly WidgetCatalogEntry[] = [
     label: "Recent pages",
     description: "Your most recently edited Notion pages, ready to open.",
     destination: NOTION_URL,
+    supportedSizes: LARGE_ONLY,
   },
   {
     id: "notion_page",
@@ -117,6 +158,17 @@ export const WIDGET_CATALOG: readonly WidgetCatalogEntry[] = [
     label: "Page",
     description: "Pin one Notion page and read its content right on your dashboard.",
     destination: NOTION_URL,
+    supportedSizes: LARGE_ONLY,
+  },
+  {
+    id: "weather",
+    appId: "weather",
+    provider: "weather",
+    label: "Weather",
+    description: "Current conditions and a short forecast for any city. No account needed.",
+    destination: WEATHER_URL,
+    // The first widget built for all three iOS sizes (FRA-149).
+    supportedSizes: WIDGET_SIZES,
   },
 ] as const;
 

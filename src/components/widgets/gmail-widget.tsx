@@ -60,13 +60,7 @@ export function GmailWidget({
     <WidgetCard
       provider="gmail"
       title="Gmail"
-      headerBadge={
-        payload.unreadCount && payload.unreadCount > 0 ? (
-          <span className="text-[11px] leading-none whitespace-nowrap text-[#4285F4]">
-            {payload.unreadCount} unread
-          </span>
-        ) : null
-      }
+      unreadCount={payload.unreadCount}
       headerLabel={selectedLabel}
       headerControl={
         <Select value={view} onValueChange={(value) => setView(String(value))}>

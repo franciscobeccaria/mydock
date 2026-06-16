@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Pencil } from "lucide-react";
+import { Check, Pencil, Plus } from "lucide-react";
 
 import {
   SidebarMenu,
@@ -10,7 +10,7 @@ import {
 import { useDashboardMode } from "@/components/dashboard/dashboard-mode-context";
 
 export function EditDashboardToggle() {
-  const { isEditing, toggleMode } = useDashboardMode();
+  const { isEditing, toggleMode, setCatalogOpen } = useDashboardMode();
 
   return (
     <SidebarMenu>
@@ -24,6 +24,17 @@ export function EditDashboardToggle() {
           <span>{isEditing ? "Done" : "Edit dashboard"}</span>
         </SidebarMenuButton>
       </SidebarMenuItem>
+
+      {/* Add-widget lives here (not in the grid) so it never reorders or leaves a
+          phantom tile. Only while editing — adding is an edit-mode action. */}
+      {isEditing ? (
+        <SidebarMenuItem>
+          <SidebarMenuButton onClick={() => setCatalogOpen(true)} tooltip="Add widget">
+            <Plus />
+            <span>Add widget</span>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+      ) : null}
     </SidebarMenu>
   );
 }

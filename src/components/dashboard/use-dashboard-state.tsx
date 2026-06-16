@@ -18,6 +18,16 @@ import {
   type Shortcut,
   type WidgetInstance,
 } from "@/components/dashboard/widget-instance";
+import { normalizeLayout } from "@/components/dashboard/grid-layout";
+
+/**
+ * Ensure every instance carries an (x,y) cell. Legacy layouts (and the default
+ * layout) lack positions; this packs them once (first-fit) so the grid renders
+ * by coordinates from the first paint. Applied at every point state enters.
+ */
+function withPositions(payload: DashboardStatePayload): DashboardStatePayload {
+  return { ...payload, layout: normalizeLayout(payload.layout) };
+}
 
 // Cache keys are scoped per user so a shared browser (sign out → sign in as a
 // different account) never seeds the new user's server row from the previous
@@ -50,7 +60,7 @@ function readCachedState(userId: string | null): DashboardStatePayload {
     return { layout: defaultInstances(), shortcuts: [] };
   }
 
-  const layout = readCachedLayout(userId);
+  const layout = normalizeLayout(readCachedLayout(userId));
   const shortcuts = readCachedShortcuts(userId);
   return { layout, shortcuts };
 }
@@ -177,15 +187,20 @@ function useDashboardStateStore(userId: string | null): DashboardState {
     if (!query.isSuccess || reconciledRef.current) return;
     reconciledRef.current = true;
     if (query.data) {
-      writeCache(userId, query.data);
+      // Server row may predate positions (legacy) — normalize before it lands.
+      const positioned = withPositions(query.data);
+      writeCache(userId, positioned);
       // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time reconcile of server data into state
-      setState(query.data);
+      setState(positioned);
     } else {
       // Fresh user (no server row): seed neutral DEFAULT_LAYOUT, never the in-memory
       // state — that could carry unscoped legacy-cache data from another account on
       // a shared browser. The one-time localStorage→server migration for the original
       // user already ran (they have a row), so a null row genuinely means "new user".
-      const seeded: DashboardStatePayload = { layout: defaultInstances(), shortcuts: [] };
+      const seeded: DashboardStatePayload = withPositions({
+        layout: defaultInstances(),
+        shortcuts: [],
+      });
       void putServerState(seeded);
       writeCache(userId, seeded);
       setState(seeded);

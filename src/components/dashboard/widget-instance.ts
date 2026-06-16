@@ -18,6 +18,14 @@ export type WidgetInstance = {
   accountId: string | null;
   /** Per-instance prefs, e.g. `{ "gmail-view": "unread" }`. */
   config: Record<string, string>;
+  /**
+   * Explicit cell on the 4-column dashboard grid (FRA-149). Blank cells are
+   * preserved (iOS-18 style), so position is not derived from array order.
+   * Optional for back-compat: legacy layouts lack x,y and get packed once on
+   * load (see normalizeLayout in grid-layout.ts).
+   */
+  x?: number;
+  y?: number;
 };
 
 export const widgetInstanceSchema = z.object({
@@ -25,6 +33,8 @@ export const widgetInstanceSchema = z.object({
   slotId: z.string().refine(isSlotId, "unknown slotId"),
   accountId: z.string().nullable(),
   config: z.record(z.string(), z.string()).default({}),
+  x: z.number().int().min(0).optional(),
+  y: z.number().int().min(0).optional(),
 });
 
 // Shortcut URLs are opened with window.open and rendered as <img> srcs, so the

@@ -8,6 +8,7 @@ import { GoogleTasksWidget } from "@/components/widgets/google-tasks-widget";
 import { LinearWidget } from "@/components/widgets/linear-widget";
 import { NotionPageWidget } from "@/components/widgets/notion-page-widget";
 import { NotionRecentPagesWidget } from "@/components/widgets/notion-recent-pages-widget";
+import { WeatherWidget } from "@/components/widgets/weather-widget";
 import { CATALOG_BY_ID, type SlotId } from "@/components/widgets/widget-catalog";
 import { type Provider, type WidgetPayload, type WidgetProps } from "@/features/integrations/types";
 
@@ -17,6 +18,7 @@ export const CONFIG_KEY: Partial<Record<SlotId, string>> = {
   google_tasks: "tasks-view",
   linear: "linear-project",
   notion_page: "notion-page-id",
+  weather: "weather-city",
 };
 
 function makeLoadingPayload(provider: Provider, title: string): WidgetPayload {
@@ -89,11 +91,14 @@ export function widgetQueryKey(
   if (slotId === "notion_recent") return ["integrations", "notion", "recent", acct] as const;
   if (slotId === "notion_page")
     return ["integrations", "notion", "page", config ?? "__unset__", acct] as const;
+  // Weather keys by its chosen city so two cities cache apart. No account.
+  if (slotId === "weather") return ["integrations", "weather", config ?? "__default__"] as const;
   return ["integrations", "linear", "issues", acct] as const;
 }
 
 /** Per-provider staleTime, shared so the grid and the preview cache consistently. */
 export function widgetStaleTime(provider: Provider) {
+  if (provider === "weather") return 10 * 60_000;
   return provider === "linear" || provider === "notion"
     ? 5 * 60_000
     : provider === "google_tasks"
@@ -110,6 +115,7 @@ const WIDGET_TITLE: Record<SlotId, string> = {
   calendar_month: "Calendar",
   notion_recent: "Recent pages",
   notion_page: "Notion",
+  weather: "Weather",
 };
 
 /**
@@ -139,6 +145,8 @@ export function renderWidget(
       return <NotionRecentPagesWidget payload={payload} {...shared} />;
     case "notion_page":
       return <NotionPageWidget payload={payload} {...shared} />;
+    case "weather":
+      return <WeatherWidget payload={payload} {...shared} />;
   }
   return null;
 }
