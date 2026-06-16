@@ -13,7 +13,9 @@ import {
 
 import {
   dashboardStateSchema,
-  defaultInstances,
+  defaultPages,
+  emptyPage,
+  type DashboardPage,
   type DashboardStatePayload,
   type Shortcut,
   type WidgetInstance,
@@ -21,95 +23,48 @@ import {
 import { normalizeLayout } from "@/components/dashboard/grid-layout";
 
 /**
- * Ensure every instance carries an (x,y) cell. Legacy layouts (and the default
- * layout) lack positions; this packs them once (first-fit) so the grid renders
- * by coordinates from the first paint. Applied at every point state enters.
+ * Ensure every instance on every page carries an (x,y) cell. Legacy/default
+ * layouts lack positions; this packs them once (first-fit) so the grid renders
+ * by coordinates from the first paint. Applied wherever server state enters.
  */
 function withPositions(payload: DashboardStatePayload): DashboardStatePayload {
-  return { ...payload, layout: normalizeLayout(payload.layout) };
+  return {
+    ...payload,
+    pages: payload.pages.map((page) => ({ ...page, layout: normalizeLayout(page.layout) })),
+  };
 }
 
-// Cache keys are scoped per user so a shared browser (sign out → sign in as a
-// different account) never seeds the new user's server row from the previous
-// user's cache. We deliberately do NOT read the older *unscoped* cache keys
-// (mydock:dashboard:v2 / :shortcuts:v1 / :widget-order:v1 / :widget-pref:*): they
-// can't be attributed to the current user, so reading them would re-open that
-// cross-account leak. A returning user is restored from their server row instead
-// (the source of truth); a fresh user is seeded with neutral defaults.
-const LAYOUT_KEY = (userId: string) => `mydock:dashboard:v2:${userId}`;
-const SHORTCUTS_KEY = (userId: string) => `mydock:shortcuts:v1:${userId}`;
 const SAVE_DEBOUNCE_MS = 500;
 
 type DashboardState = {
-  /** Placed widget instances, in display order. */
+  /** All dashboard pages, in order (FRA-140). */
+  pages: DashboardPage[];
+  /** The page currently shown. */
+  activePageId: string;
+  /** Widget instances on the active page (display order). */
   layout: WidgetInstance[];
   shortcuts: Shortcut[];
+  /** Replace the active page's layout (the only layout a mutation touches). */
   setLayout: (next: WidgetInstance[] | ((current: WidgetInstance[]) => WidgetInstance[])) => void;
   setShortcuts: (next: Shortcut[] | ((current: Shortcut[]) => Shortcut[])) => void;
-  /** True until the server row (or its localStorage seed) has loaded. */
+  /** Navigate to a page by id (no-op if it doesn't exist). */
+  setActivePage: (pageId: string) => void;
+  /** Step to the previous/next page, clamped at the edges. */
+  goToPage: (direction: -1 | 1) => void;
+  /** Append a new empty page and navigate to it. Returns the new page id. */
+  addPage: () => string;
+  /** Remove a page (no-op if it's the last one — page 1 must always exist). */
+  removePage: (pageId: string) => void;
+  /** True until the server row has loaded — the grid shows a skeleton meanwhile. */
   isLoading: boolean;
 };
 
 /**
- * Read the legacy localStorage layout. The old value was a `SlotId[]`; we keep
- * reading that shape and convert to instances. A value already in instance shape
- * (written by this hook as the cache) is parsed back to instances directly.
- */
-function readCachedState(userId: string | null): DashboardStatePayload {
-  if (typeof window === "undefined" || !userId) {
-    return { layout: defaultInstances(), shortcuts: [] };
-  }
-
-  const layout = normalizeLayout(readCachedLayout(userId));
-  const shortcuts = readCachedShortcuts(userId);
-  return { layout, shortcuts };
-}
-
-function readCachedLayout(userId: string): WidgetInstance[] {
-  try {
-    // Only the user-scoped key is trusted for paint. No scoped key → neutral
-    // defaults (the unscoped legacy keys can't be attributed to this user, so
-    // reading them would risk painting another account's layout on a shared
-    // browser). The real layout arrives from the server row on reconcile.
-    const raw = window.localStorage.getItem(LAYOUT_KEY(userId));
-    if (!raw) return defaultInstances();
-
-    const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) return defaultInstances();
-
-    const result = dashboardStateSchema.safeParse({ layout: parsed, shortcuts: [] });
-    return result.success ? result.data.layout : defaultInstances();
-  } catch {
-    return defaultInstances();
-  }
-}
-
-function readCachedShortcuts(userId: string): Shortcut[] {
-  try {
-    const raw = window.localStorage.getItem(SHORTCUTS_KEY(userId));
-    if (!raw) return [];
-    const result = dashboardStateSchema.safeParse({ layout: [], shortcuts: JSON.parse(raw) });
-    return result.success ? result.data.shortcuts : [];
-  } catch {
-    return [];
-  }
-}
-
-function writeCache(userId: string | null, state: DashboardStatePayload): void {
-  if (typeof window === "undefined" || !userId) return;
-  try {
-    window.localStorage.setItem(LAYOUT_KEY(userId), JSON.stringify(state.layout));
-    window.localStorage.setItem(SHORTCUTS_KEY(userId), JSON.stringify(state.shortcuts));
-  } catch {
-    // Storage may be unavailable (private mode); state still works in-session.
-  }
-}
-
-/**
  * Loads the server row. Returns `null` ONLY for a true "no row yet" (fresh user),
- * which is the signal to seed. A read failure or an unparseable/legacy payload
- * throws instead — we must not treat those as "no row", or the reconcile would
- * overwrite a real (if unreadable) server record with cached state.
+ * which is the signal to seed. A read failure or an unparseable payload throws
+ * instead — we must not treat those as "no row", or the reconcile would overwrite
+ * a real (if unreadable) server record. The API already returns the multi-page
+ * shape (wrapping legacy single-layout rows), so we parse it directly.
  */
 async function fetchServerState(): Promise<DashboardStatePayload | null> {
   const response = await fetch("/api/dashboard-state", { cache: "no-store" });
@@ -132,26 +87,25 @@ async function putServerState(state: DashboardStatePayload): Promise<void> {
 }
 
 /**
- * The store. Owns the one in-memory `{ layout, shortcuts }` snapshot, the server
- * reconcile, and the debounced write-through. There must be exactly ONE of these
- * per dashboard — `setLayout`/`setShortcuts` each write the *whole* payload, so two
- * stores would clobber each other's slice. Mounted once by `DashboardStateProvider`;
- * consumers read it through `useDashboardState()`.
+ * The store. Owns the one in-memory `{ pages, shortcuts }` snapshot, the active
+ * page, the server reconcile, and the debounced write-through. There must be
+ * exactly ONE of these per dashboard — every setter writes the *whole* payload,
+ * so two stores would clobber each other. Mounted once by `DashboardStateProvider`.
  *
- * - Loads the server row on mount. If none exists, seeds it from localStorage
- *   (soft-migration of the legacy SlotId[] + widget-prefs + shortcuts) and PUTs it.
- * - Mutations update in-memory state immediately (optimistic), mirror to
- *   localStorage as a fast cache, and fire a debounced PUT. A failed PUT keeps the
- *   in-session state working (last-write-wins on the next success).
+ * Persistence is Supabase-only (FRA-140): no localStorage cache. The initial
+ * state is neutral defaults; the real state arrives from the server row on the
+ * first query resolve (the grid shows a skeleton until then). If no row exists,
+ * we seed the server with defaults. Mutations are optimistic + a debounced PUT.
  */
 function useDashboardStateStore(userId: string | null): DashboardState {
-  // The grid is client-only (ssr: false), so reading localStorage in the lazy
-  // initializer is safe and gives an instant first paint from cache.
-  const [state, setState] = useState<DashboardStatePayload>(() => readCachedState(userId));
+  // Neutral seed; the server row replaces this on reconcile. We do NOT read any
+  // client cache, so there's never a flash of another account's (or stale) layout.
+  const [state, setState] = useState<DashboardStatePayload>(() => ({
+    pages: defaultPages(),
+    shortcuts: [],
+  }));
+  const [activePageId, setActivePageId] = useState<string>(() => state.pages[0]!.id);
 
-  // Key the query by userId (and gate on it) so the singleton browser QueryClient
-  // never serves account A's cached row to account B after an in-app account switch
-  // without a full reload.
   const query = useQuery({
     queryKey: ["dashboard-state", userId],
     queryFn: fetchServerState,
@@ -161,8 +115,7 @@ function useDashboardStateStore(userId: string | null): DashboardState {
     refetchOnWindowFocus: false,
   });
 
-  // Debounced write-through. `scheduleSave` is given the exact value to send, so
-  // there's no need to mirror state into a ref during render.
+  // Debounced write-through. `scheduleSave` is given the exact value to send.
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scheduleSave = useCallback((next: DashboardStatePayload) => {
     if (timerRef.current) clearTimeout(timerRef.current);
@@ -177,71 +130,135 @@ function useDashboardStateStore(userId: string | null): DashboardState {
     [],
   );
 
-  // Reconcile once with the server when the query first resolves. This is the
-  // legitimate "sync an external system into React state" case: the server row
-  // is the source of truth, so it overwrites the cache-seeded initial state. A
-  // null row means a fresh user — seed the server with neutral defaults. Guarded
-  // to run once.
+  // Reconcile once with the server when the query first resolves. The server row
+  // is the source of truth; a null row means a fresh user — seed defaults.
   const reconciledRef = useRef(false);
   useEffect(() => {
     if (!query.isSuccess || reconciledRef.current) return;
     reconciledRef.current = true;
     if (query.data) {
-      // Server row may predate positions (legacy) — normalize before it lands.
       const positioned = withPositions(query.data);
-      writeCache(userId, positioned);
       // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time reconcile of server data into state
       setState(positioned);
+      setActivePageId(positioned.pages[0]!.id);
     } else {
-      // Fresh user (no server row): seed neutral DEFAULT_LAYOUT, never the in-memory
-      // state — that could carry unscoped legacy-cache data from another account on
-      // a shared browser. The one-time localStorage→server migration for the original
-      // user already ran (they have a row), so a null row genuinely means "new user".
-      const seeded: DashboardStatePayload = withPositions({
-        layout: defaultInstances(),
-        shortcuts: [],
-      });
+      const seeded = withPositions({ pages: defaultPages(), shortcuts: [] });
       void putServerState(seeded);
-      writeCache(userId, seeded);
       setState(seeded);
+      setActivePageId(seeded.pages[0]!.id);
     }
-  }, [query.isSuccess, query.data, userId]);
+  }, [query.isSuccess, query.data]);
 
-  const setLayout = useCallback<DashboardState["setLayout"]>(
-    (next) => {
+  /** Write a whole payload: update state, fire the debounced PUT. */
+  const commit = useCallback(
+    (updater: (current: DashboardStatePayload) => DashboardStatePayload) => {
       setState((current) => {
-        const layout = typeof next === "function" ? next(current.layout) : next;
-        const updated = { ...current, layout };
-        writeCache(userId, updated);
+        const updated = updater(current);
         scheduleSave(updated);
         return updated;
       });
     },
-    [scheduleSave, userId],
+    [scheduleSave],
+  );
+
+  const setLayout = useCallback<DashboardState["setLayout"]>(
+    (next) => {
+      commit((current) => ({
+        ...current,
+        pages: current.pages.map((page) => {
+          if (page.id !== activePageId) return page;
+          const layout = typeof next === "function" ? next(page.layout) : next;
+          return { ...page, layout };
+        }),
+      }));
+    },
+    [commit, activePageId],
   );
 
   const setShortcuts = useCallback<DashboardState["setShortcuts"]>(
     (next) => {
-      setState((current) => {
-        const shortcuts = typeof next === "function" ? next(current.shortcuts) : next;
-        const updated = { ...current, shortcuts };
-        writeCache(userId, updated);
-        scheduleSave(updated);
-        return updated;
+      commit((current) => ({
+        ...current,
+        shortcuts: typeof next === "function" ? next(current.shortcuts) : next,
+      }));
+    },
+    [commit],
+  );
+
+  const setActivePage = useCallback(
+    (pageId: string) => {
+      if (state.pages.some((p) => p.id === pageId)) setActivePageId(pageId);
+    },
+    [state.pages],
+  );
+
+  const goToPage = useCallback(
+    (direction: -1 | 1) => {
+      const index = state.pages.findIndex((p) => p.id === activePageId);
+      const next = state.pages[index + direction];
+      if (next) setActivePageId(next.id);
+    },
+    [state.pages, activePageId],
+  );
+
+  const addPage = useCallback((): string => {
+    const page = emptyPage();
+    commit((current) => ({ ...current, pages: [...current.pages, page] }));
+    setActivePageId(page.id);
+    return page.id;
+  }, [commit]);
+
+  const removePage = useCallback(
+    (pageId: string) => {
+      commit((current) => {
+        // Page 1 must always exist — never drop to zero pages.
+        if (current.pages.length <= 1) return current;
+        const index = current.pages.findIndex((p) => p.id === pageId);
+        if (index === -1) return current;
+        const pages = current.pages.filter((p) => p.id !== pageId);
+        // If the removed page was active, fall back to the neighbour.
+        if (pageId === activePageId) {
+          const fallback = pages[Math.max(0, index - 1)]!;
+          setActivePageId(fallback.id);
+        }
+        return { ...current, pages };
       });
     },
-    [scheduleSave, userId],
+    [commit, activePageId],
+  );
+
+  const activeLayout = useMemo(
+    () => state.pages.find((p) => p.id === activePageId)?.layout ?? [],
+    [state.pages, activePageId],
   );
 
   return useMemo(
     () => ({
-      layout: state.layout,
+      pages: state.pages,
+      activePageId,
+      layout: activeLayout,
       shortcuts: state.shortcuts,
       setLayout,
       setShortcuts,
+      setActivePage,
+      goToPage,
+      addPage,
+      removePage,
       isLoading: query.isLoading,
     }),
-    [state.layout, state.shortcuts, setLayout, setShortcuts, query.isLoading],
+    [
+      state.pages,
+      state.shortcuts,
+      activePageId,
+      activeLayout,
+      setLayout,
+      setShortcuts,
+      setActivePage,
+      goToPage,
+      addPage,
+      removePage,
+      query.isLoading,
+    ],
   );
 }
 

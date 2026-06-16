@@ -3,7 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Minus } from "lucide-react";
+import { ChevronLeft, ChevronRight, Minus } from "lucide-react";
 import {
   DndContext,
   KeyboardSensor,
@@ -25,9 +25,10 @@ import { CSS } from "@dnd-kit/utilities";
 
 import { useDashboardMode } from "@/components/dashboard/dashboard-mode-context";
 import { PickerLockProvider, usePickerLock } from "@/components/dashboard/picker-lock-context";
+import { PageDots } from "@/components/dashboard/page-dots";
 import { ShortcutsRow } from "@/components/dashboard/shortcuts-row";
 import { useDashboardLayout } from "@/components/dashboard/use-dashboard-layout";
-import { DashboardStateProvider } from "@/components/dashboard/use-dashboard-state";
+import { DashboardStateProvider, useDashboardState } from "@/components/dashboard/use-dashboard-state";
 import { type WidgetInstance } from "@/components/dashboard/widget-instance";
 import {
   computeMove,
@@ -353,9 +354,16 @@ function WidgetGrid({
     weather: true,
   };
 
-  // Active instances, order, add/remove/config all live in the layout hook, now
-  // backed by per-user Supabase state (with a localStorage cache).
+  // Active instances, order, add/remove/config all live in the layout hook,
+  // backed by per-user Supabase state (no client cache; FRA-140). The layout is
+  // already scoped to the active page by the store.
   const { layout, addWidget, removeWidget, placeWidgetAt, updateConfig } = useDashboardLayout();
+
+  // Multi-page nav (FRA-140). `pages`/`activePageId` drive the dots; the grid
+  // renders only the active page's `layout`. The dock (shortcuts) is shared.
+  const { pages, activePageId, setActivePage, goToPage, addPage, removePage, isLoading } =
+    useDashboardState();
+  const activeIndex = pages.findIndex((p) => p.id === activePageId);
 
   // Linear's catalog destination is the generic https://linear.app/; when issues
   // have loaded we resolve the user's own assigned-issues view from their URLs.
@@ -385,6 +393,34 @@ function WidgetGrid({
   // `over` — because on release the dragged tile's translated rect can resolve
   // to a different (distant) cell than the one the live preview was showing.
   const lastTargetRef = useRef<{ cx: number; cy: number } | null>(null);
+
+  // Keyboard ←/→ change pages, but never while typing in a field (or mid-drag).
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+      const el = document.activeElement as HTMLElement | null;
+      const typing =
+        el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable);
+      if (typing || activeId !== null) return;
+      goToPage(e.key === "ArrowLeft" ? -1 : 1);
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [activeId, goToPage]);
+
+  // Horizontal trackpad swipe / shift+scroll changes pages. A cooldown collapses
+  // one gesture (many wheel events) into a single page advance.
+  const wheelCooldownRef = useRef(0);
+  const onWheel = useCallback(
+    (e: React.WheelEvent) => {
+      const dx = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : 0;
+      if (Math.abs(dx) < 30 || activeId !== null) return;
+      if (e.timeStamp - wheelCooldownRef.current < 400) return;
+      wheelCooldownRef.current = e.timeStamp;
+      goToPage(dx > 0 ? 1 : -1);
+    },
+    [goToPage, activeId],
+  );
 
   function handleDragStart(event: DragStartEvent) {
     setActiveId(String(event.active.id));
@@ -496,80 +532,140 @@ function WidgetGrid({
   // always empty space to drop into (and to grow downward).
   const rowCount = maxOccupiedRow(layout) + 2;
 
-  if (!isEditing) {
+  // View-mode render of ONE page's grid (plain, clickable tiles — no drag). Used
+  // for every page in the sliding track so the transition can animate between them.
+  function renderViewPage(page: { id: string; layout: WidgetInstance[] }) {
+    if (page.layout.length === 0) {
+      return (
+        <div className="flex min-h-[200px] items-center justify-center rounded-[20px] border border-dashed border-[#E7E7EA] text-sm text-[#71717A]">
+          No widgets yet — switch to Edit to add some.
+        </div>
+      );
+    }
     return (
-      <>
-        <ShortcutsRow isEditing={false} />
-        {layout.length === 0 ? (
-          <div className="flex min-h-[200px] items-center justify-center rounded-[20px] border border-dashed border-[#E7E7EA] text-sm text-[#71717A]">
-            No widgets yet — switch to Edit to add some.
-          </div>
-        ) : (
-          <div className={gridClassName}>
-            {layout.map((instance) => (
-              <WidgetSlot
-                key={instance.instanceId}
-                onOpen={() => openWidget(instance)}
-                style={cellStyle(instance.x ?? 0, instance.y ?? 0, instanceSize(instance))}
-              >
-                {renderInstance(instance)}
-              </WidgetSlot>
-            ))}
-          </div>
-        )}
-      </>
+      <div className={gridClassName}>
+        {page.layout.map((instance) => (
+          <WidgetSlot
+            key={instance.instanceId}
+            onOpen={() => openWidget(instance)}
+            style={cellStyle(instance.x ?? 0, instance.y ?? 0, instanceSize(instance))}
+          >
+            {renderInstance(instance)}
+          </WidgetSlot>
+        ))}
+      </div>
     );
   }
 
+  // The page area. View mode: all pages live side-by-side in a track that slides
+  // with translateX — that's what makes paging fluid (iOS-style). Edit mode: only
+  // the active page is mounted (it owns the dnd surface), so paging there is an
+  // instant swap — you're reorganizing widgets, not swiping. No cross-page drag.
+  const gridContent = !isEditing ? (
+    // `overflow-hidden` clips the neighbour pages horizontally for the slide. It
+    // would ALSO clip the unread badge, which overflows each tile's top-right
+    // corner (-top-1.5/-right-1.5) — so the track carries vertical padding (and
+    // each page carries side padding) to keep that corner overflow inside the
+    // clip region. py-3 (12px) clears the badge's ~8px overhang (6px offset + ring).
+    <div className="flex-1 overflow-hidden py-3">
+      <div
+        className="flex transition-transform duration-300 ease-out"
+        style={{ transform: `translateX(-${Math.max(0, activeIndex) * 100}%)` }}
+      >
+        {pages.map((page) => (
+          <div key={page.id} className="w-full shrink-0 px-4 sm:px-6 lg:px-8">
+            {renderViewPage(page)}
+          </div>
+        ))}
+      </div>
+    </div>
+  ) : (
+    <DndContext
+      sensors={sensors}
+      collisionDetection={cellCollision}
+      onDragStart={handleDragStart}
+      onDragOver={handleDragOver}
+      onDragEnd={handleDragEnd}
+      onDragCancel={handleDragCancel}
+    >
+      <div
+        className={cn(gridClassName, "relative flex-1 px-4 sm:px-6 lg:px-8")}
+        data-dragging={activeId ?? "none"}
+      >
+        {/* Empty drop-target cells behind the tiles: every (cx,cy) on the grid.
+            `event.over` resolves straight to a cell, so no pixel measuring.
+            While dragging, the cells show a faint 1×1 reference grid. */}
+        <DropCells cols={GRID_COLS} rows={rowCount} showGrid={activeId !== null} />
+
+        {/* Destination placeholder: a filled highlight at the cell + exact
+            footprint where the dragged widget will land, shown before release. */}
+        {activeInstance && dropCell ? (
+          <div
+            aria-hidden
+            style={{
+              ...cellStyle(dropCell.x, dropCell.y, instanceSize(activeInstance)),
+              zIndex: 1,
+            }}
+            className="pointer-events-none rounded-[20px] border-2 border-primary/40 bg-primary/10"
+          />
+        ) : null}
+
+        {layout.map((instance, index) => {
+          const cell = renderCell(instance);
+          return (
+            <PositionedWidget
+              key={instance.instanceId}
+              id={instance.instanceId}
+              jiggleSeed={cell.x + cell.y + index}
+              style={cellStyle(cell.x, cell.y, instanceSize(instance))}
+              sizeControl={renderSizeControl(instance)}
+              onRemove={() => removeWidget(instance.instanceId)}
+            >
+              {renderInstance(instance)}
+            </PositionedWidget>
+          );
+        })}
+      </div>
+    </DndContext>
+  );
+
   return (
     <>
-      {/* Shortcuts own an independent DndContext — kept a sibling, never nested
-          in the widget grid's, so the two drag contexts can't share items. */}
-      <ShortcutsRow isEditing />
-      <DndContext
-        sensors={sensors}
-        collisionDetection={cellCollision}
-        onDragStart={handleDragStart}
-        onDragOver={handleDragOver}
-        onDragEnd={handleDragEnd}
-        onDragCancel={handleDragCancel}
-      >
-        <div className={cn(gridClassName, "relative")} data-dragging={activeId ?? "none"}>
-          {/* Empty drop-target cells behind the tiles: every (cx,cy) on the grid.
-              `event.over` resolves straight to a cell, so no pixel measuring.
-              While dragging, the cells show a faint 1×1 reference grid. */}
-          <DropCells cols={GRID_COLS} rows={rowCount} showGrid={activeId !== null} />
+      {isLoading ? (
+        <GridSkeleton />
+      ) : (
+        <>
+          {/* Page dots sit ABOVE the dock (unlike iOS' bottom dots): this is a
+              scrollable web page, so the dots belong at the top with the
+              shortcuts, not pinned to the bottom of a fixed home screen. */}
+          <PageDots
+            pages={pages}
+            activePageId={activePageId}
+            isEditing={isEditing}
+            onSelect={setActivePage}
+            onAdd={addPage}
+            onRemove={removePage}
+          />
 
-          {/* Destination placeholder: a filled highlight at the cell + exact
-              footprint where the dragged widget will land, shown before release. */}
-          {activeInstance && dropCell ? (
-            <div
-              aria-hidden
-              style={{
-                ...cellStyle(dropCell.x, dropCell.y, instanceSize(activeInstance)),
-                zIndex: 1,
-              }}
-              className="pointer-events-none rounded-[20px] border-2 border-primary/40 bg-primary/10"
+          {/* Shortcuts own an independent DndContext — kept a sibling, never
+              nested in the widget grid's, so the two drag contexts can't share
+              items. The dock is shared across pages (FRA-140). */}
+          <ShortcutsRow isEditing={isEditing} />
+
+          {/* Page carousel (FRA-140): on-screen arrows flank the active page's
+              grid; horizontal wheel/swipe also pages. Drag still moves widgets
+              within the current page only — no cross-page drag in v1. */}
+          <div className="flex items-stretch gap-2" onWheel={onWheel}>
+            <PageArrow direction="left" disabled={activeIndex <= 0} onClick={() => goToPage(-1)} />
+            {gridContent}
+            <PageArrow
+              direction="right"
+              disabled={activeIndex >= pages.length - 1}
+              onClick={() => goToPage(1)}
             />
-          ) : null}
-
-          {layout.map((instance, index) => {
-            const cell = renderCell(instance);
-            return (
-              <PositionedWidget
-                key={instance.instanceId}
-                id={instance.instanceId}
-                jiggleSeed={cell.x + cell.y + index}
-                style={cellStyle(cell.x, cell.y, instanceSize(instance))}
-                sizeControl={renderSizeControl(instance)}
-                onRemove={() => removeWidget(instance.instanceId)}
-              >
-                {renderInstance(instance)}
-              </PositionedWidget>
-            );
-          })}
-        </div>
-      </DndContext>
+          </div>
+        </>
+      )}
 
       <WidgetCatalogDialog
         open={catalogOpen}
@@ -580,6 +676,47 @@ function WidgetGrid({
         onAdd={addWidget}
       />
     </>
+  );
+}
+
+/** On-screen ‹ › page arrows, disabled at the first/last page edge (FRA-140). */
+function PageArrow({
+  direction,
+  disabled,
+  onClick,
+}: {
+  direction: "left" | "right";
+  disabled: boolean;
+  onClick: () => void;
+}) {
+  const Icon = direction === "left" ? ChevronLeft : ChevronRight;
+  return (
+    <button
+      type="button"
+      aria-label={direction === "left" ? "Previous page" : "Next page"}
+      onClick={onClick}
+      disabled={disabled}
+      className={cn(
+        "flex h-8 w-8 shrink-0 items-center justify-center self-center rounded-full",
+        "border border-[#E7E7EA] bg-white text-[#71717A] shadow-sm transition-opacity",
+        disabled ? "pointer-events-none opacity-0" : "hover:text-[#18181B]",
+      )}
+    >
+      <Icon className="h-4 w-4" />
+    </button>
+  );
+}
+
+/** Skeleton shown while the Supabase row loads (FRA-140 — no client cache, so the
+ *  first paint must not flash the default layout). A few placeholder tiles. */
+function GridSkeleton() {
+  return (
+    <div className="grid grid-cols-4 gap-4 auto-rows-[167px] px-4 sm:px-6 lg:px-8" aria-hidden>
+      <div className="col-span-2 row-span-2 animate-pulse rounded-[20px] bg-[#F1F1F4]" />
+      <div className="col-span-2 row-span-1 animate-pulse rounded-[20px] bg-[#F1F1F4]" />
+      <div className="col-span-1 row-span-1 animate-pulse rounded-[20px] bg-[#F1F1F4]" />
+      <div className="col-span-1 row-span-1 animate-pulse rounded-[20px] bg-[#F1F1F4]" />
+    </div>
   );
 }
 
