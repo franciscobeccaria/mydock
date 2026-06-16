@@ -50,7 +50,7 @@ export function ShortcutsRow({ isEditing }: { isEditing: boolean }) {
 
   if (!isEditing) {
     return (
-      <div className="mb-6 flex flex-wrap items-center justify-center gap-3">
+      <div className="flex flex-wrap items-center justify-center gap-3">
         {shortcuts.map((shortcut) => (
           <button
             key={shortcut.id}
@@ -84,7 +84,7 @@ export function ShortcutsRow({ isEditing }: { isEditing: boolean }) {
           items={shortcuts.map((s) => s.id)}
           strategy={horizontalListSortingStrategy}
         >
-          <div className="mb-6 flex flex-wrap items-center justify-center gap-3">
+          <div className="flex flex-wrap items-center justify-center gap-3">
             {shortcuts.map((shortcut, index) => (
               <SortableShortcut
                 key={shortcut.id}

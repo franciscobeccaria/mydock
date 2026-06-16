@@ -580,7 +580,12 @@ function WidgetGrid({
         style={{ transform: `translateX(-${Math.max(0, activeIndex) * 100}%)` }}
       >
         {pages.map((page) => (
-          <div key={page.id} className="w-full shrink-0 px-4 sm:px-6 lg:px-8">
+          // px-3 (not the page-wide px-4..lg:px-8): the carousel arrows already
+          // inset the grid from the edges, so the page only needs enough side
+          // padding to keep the right-column unread badge (-right-1.5 + ring,
+          // ~8px) from being clipped by the track's overflow-hidden — matching
+          // the py-3 that does the same vertically.
+          <div key={page.id} className="w-full shrink-0 px-3">
             {renderViewPage(page)}
           </div>
         ))}
@@ -596,7 +601,7 @@ function WidgetGrid({
       onDragCancel={handleDragCancel}
     >
       <div
-        className={cn(gridClassName, "relative flex-1 px-4 sm:px-6 lg:px-8")}
+        className={cn(gridClassName, "relative flex-1 px-3")}
         data-dragging={activeId ?? "none"}
       >
         {/* Empty drop-target cells behind the tiles: every (cx,cy) on the grid.
@@ -661,8 +666,14 @@ function WidgetGrid({
 
           {/* Page carousel (FRA-140): on-screen arrows flank the active page's
               grid; horizontal wheel/swipe also pages. Drag still moves widgets
-              within the current page only — no cross-page drag in v1. */}
-          <div className="flex items-stretch gap-2" onWheel={onWheel}>
+              within the current page only — no cross-page drag in v1. The
+              carousel owns the dashboard's side margin (the PageContainer zeroes
+              its own), so the arrows sit INSIDE that margin instead of pinned to
+              the viewport edge. */}
+          <div
+            className="flex items-stretch gap-3 px-2 sm:px-3 lg:px-4"
+            onWheel={onWheel}
+          >
             <PageArrow direction="left" disabled={activeIndex <= 0} onClick={() => goToPage(-1)} />
             {gridContent}
             <PageArrow
@@ -704,7 +715,7 @@ function PageArrow({
       onClick={onClick}
       disabled={disabled}
       className={cn(
-        "flex h-8 w-8 shrink-0 items-center justify-center self-center rounded-full",
+        "flex h-9 w-9 shrink-0 items-center justify-center self-center rounded-full",
         "border border-[#E7E7EA] bg-white text-[#71717A] shadow-sm transition-opacity",
         disabled ? "pointer-events-none opacity-0" : "hover:text-[#18181B]",
       )}
@@ -715,14 +726,24 @@ function PageArrow({
 }
 
 /** Skeleton shown while the Supabase row loads (FRA-140 — no client cache, so the
- *  first paint must not flash the default layout). A few placeholder tiles. */
+ *  first paint must not flash the default layout). Mirrors the real carousel
+ *  layout EXACTLY — same side margin and arrow-width spacers (w-9) + gap + inner
+ *  px-3 — so the grid doesn't jump sideways when the real data swaps in. The
+ *  pt-6 stands in for the dots + shortcuts row the real dashboard renders above
+ *  the carousel (the PageContainer's top padding is zeroed), so the skeleton
+ *  isn't flush against the top edge. */
 function GridSkeleton() {
   return (
-    <div className="grid grid-cols-4 gap-4 auto-rows-[167px] px-4 sm:px-6 lg:px-8" aria-hidden>
-      <div className="col-span-2 row-span-2 animate-pulse rounded-[20px] bg-[#F1F1F4]" />
-      <div className="col-span-2 row-span-1 animate-pulse rounded-[20px] bg-[#F1F1F4]" />
-      <div className="col-span-1 row-span-1 animate-pulse rounded-[20px] bg-[#F1F1F4]" />
-      <div className="col-span-1 row-span-1 animate-pulse rounded-[20px] bg-[#F1F1F4]" />
+    <div className="flex items-stretch gap-3 px-2 pt-6 sm:px-3 lg:px-4" aria-hidden>
+      {/* Spacers stand in for the ‹ › arrows so the grid lands at the same x. */}
+      <div className="h-9 w-9 shrink-0" />
+      <div className="grid flex-1 grid-cols-4 gap-4 auto-rows-[167px] px-3">
+        <div className="col-span-2 row-span-2 animate-pulse rounded-[20px] bg-[#F1F1F4]" />
+        <div className="col-span-2 row-span-1 animate-pulse rounded-[20px] bg-[#F1F1F4]" />
+        <div className="col-span-1 row-span-1 animate-pulse rounded-[20px] bg-[#F1F1F4]" />
+        <div className="col-span-1 row-span-1 animate-pulse rounded-[20px] bg-[#F1F1F4]" />
+      </div>
+      <div className="h-9 w-9 shrink-0" />
     </div>
   );
 }
