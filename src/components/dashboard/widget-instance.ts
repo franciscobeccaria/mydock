@@ -1,6 +1,18 @@
 import { z } from "zod";
 
-import { DEFAULT_LAYOUT, isSlotId, type SlotId } from "@/components/widgets/widget-catalog";
+import {
+  DEFAULT_LAYOUT,
+  isSlotId,
+  type SlotId,
+} from "@/components/widgets/widget-catalog";
+
+export type DashboardBreakpoint = "sm" | "md" | "lg" | "xl";
+
+const dashboardBreakpointSchema = z.enum(["sm", "md", "lg", "xl"]);
+const widgetPlacementSchema = z.object({
+  x: z.number().int().min(0),
+  y: z.number().int().min(0),
+});
 
 /**
  * A placed widget on the dashboard. Replaces the old flat `SlotId[]` layout:
@@ -26,6 +38,12 @@ export type WidgetInstance = {
    */
   x?: number;
   y?: number;
+  /**
+   * Persisted coordinates for every automatic viewport breakpoint. S/M/L/XL
+   * layouts are saved simultaneously; view and edit mode project the same active
+   * breakpoint so users edit exactly what they see.
+   */
+  placements?: Partial<Record<DashboardBreakpoint, { x: number; y: number }>>;
 };
 
 export const widgetInstanceSchema = z.object({
@@ -35,12 +53,17 @@ export const widgetInstanceSchema = z.object({
   config: z.record(z.string(), z.string()).default({}),
   x: z.number().int().min(0).optional(),
   y: z.number().int().min(0).optional(),
+  placements: z
+    .partialRecord(dashboardBreakpointSchema, widgetPlacementSchema)
+    .optional(),
 });
 
 // Shortcut URLs are opened with window.open and rendered as <img> srcs, so the
 // schema rejects anything that isn't an http(s) URL (blocks javascript:/data: etc.)
 // at the PUT boundary, not just in the client.
-const httpUrl = z.string().refine((u) => /^https?:\/\//i.test(u), "must be an http(s) URL");
+const httpUrl = z
+  .string()
+  .refine((u) => /^https?:\/\//i.test(u), "must be an http(s) URL");
 
 export const shortcutSchema = z.object({
   id: z.string(),
@@ -81,7 +104,9 @@ export const legacyDashboardStateSchema = z.object({
   shortcuts: z.array(shortcutSchema).default([]),
 });
 
-export type LegacyDashboardStatePayload = z.infer<typeof legacyDashboardStateSchema>;
+export type LegacyDashboardStatePayload = z.infer<
+  typeof legacyDashboardStateSchema
+>;
 
 /**
  * Soft-migration: each saved SlotId becomes one instance on the default account.
@@ -101,11 +126,17 @@ export function slotIdsToInstances(
 }
 
 /** Map old global prefs to the per-instance config keys each slot reads. */
-function prefForSlot(slotId: SlotId, prefs: Record<string, string>): Record<string, string> {
+function prefForSlot(
+  slotId: SlotId,
+  prefs: Record<string, string>,
+): Record<string, string> {
   const out: Record<string, string> = {};
-  if (slotId === "gmail" && prefs["gmail-view"]) out["gmail-view"] = prefs["gmail-view"];
-  if (slotId === "google_tasks" && prefs["tasks-view"]) out["tasks-view"] = prefs["tasks-view"];
-  if (slotId === "linear" && prefs["linear-project"]) out["linear-project"] = prefs["linear-project"];
+  if (slotId === "gmail" && prefs["gmail-view"])
+    out["gmail-view"] = prefs["gmail-view"];
+  if (slotId === "google_tasks" && prefs["tasks-view"])
+    out["tasks-view"] = prefs["tasks-view"];
+  if (slotId === "linear" && prefs["linear-project"])
+    out["linear-project"] = prefs["linear-project"];
   return out;
 }
 

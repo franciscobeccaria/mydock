@@ -39,7 +39,6 @@ import { type WidgetInstance } from "@/components/dashboard/widget-instance";
 import {
   computeMove,
   footprintFor,
-  GRID_COLS,
   instanceSize,
   maxOccupiedRow,
 } from "@/components/dashboard/grid-layout";
@@ -68,13 +67,6 @@ import { type WidgetPayload } from "@/features/integrations/types";
 const INTERACTIVE =
   'a,button,input,textarea,select,[role="button"],[role="option"],[role="listbox"],[data-slot="select-trigger"],[data-interactive="true"]';
 
-type DashboardLayoutMode = "responsive" | "paginated";
-
-// New desktop view mode: widgets flow in their configured order and wrap to the
-// viewport instead of forcing a 4-column page carousel. Edit mode intentionally
-// keeps the fixed paginated grid because drag/drop depends on explicit cells.
-const DESKTOP_LAYOUT_MODE: DashboardLayoutMode = "responsive";
-
 /** Stable empty sensor descriptor list — passed to DndContext to suspend dragging. */
 const NO_SENSORS: ReturnType<typeof useSensors> = [];
 
@@ -83,27 +75,12 @@ function cellStyle(
   x: number,
   y: number,
   size: WidgetSize,
+  cols: number,
 ): React.CSSProperties {
-  const { w, h } = footprintFor(size);
+  const { w, h } = footprintFor(size, cols);
   return {
     gridColumn: `${x + 1} / span ${w}`,
     gridRow: `${y + 1} / span ${h}`,
-  };
-}
-
-const RESPONSIVE_SIZE_META: Record<WidgetSize, { cols: number; rows: number }> =
-  {
-    small: { cols: 1, rows: 1 },
-    medium: { cols: 2, rows: 1 },
-    large: { cols: 2, rows: 2 },
-    tall: { cols: 1, rows: 2 },
-  };
-
-function responsiveCellStyle(size: WidgetSize): React.CSSProperties {
-  const { cols, rows } = RESPONSIVE_SIZE_META[size];
-  return {
-    gridColumn: `span ${cols}`,
-    gridRow: `span ${rows}`,
   };
 }
 
@@ -430,6 +407,7 @@ function WidgetGrid({
     addPage,
     removePage,
     isLoading,
+    columnCount,
   } = useDashboardState();
   const activeIndex = pages.findIndex((p) => p.id === activePageId);
 
@@ -518,7 +496,13 @@ function WidgetGrid({
     if (!over) return; // off the grid entirely — keep the last preview
     const cell = parseCellId(String(over.id));
     if (!cell) return;
-    const resolved = computeMove(layout, String(active.id), cell.cx, cell.cy);
+    const resolved = computeMove(
+      layout,
+      String(active.id),
+      cell.cx,
+      cell.cy,
+      columnCount,
+    );
     if (!resolved) {
       // Hovering the tile's own (clamped) home cell: a release here must CANCEL,
       // not re-commit the previous target — so clear the staged move outright.
@@ -618,14 +602,17 @@ function WidgetGrid({
     return acc;
   }, {});
 
-  // Free coordinate grid (FRA-149): 4 fixed columns, fixed-height rows, and NO
+  // Free coordinate grid (FRA-149): breakpoint columns, fixed-height rows, and NO
   // auto-flow — every tile is placed by explicit gridColumn/gridRow from its
-  // (x,y), so blank cells stay blank (iOS-18 style). Desktop-only for v1.
-  const gridClassName = "grid grid-cols-4 gap-4 auto-rows-[167px]";
+  // (x,y), so blank cells stay blank (iOS-18 style). XL is capped at 4 columns.
+  const gridClassName = "grid gap-4 auto-rows-[167px]";
+  const gridStyle = {
+    gridTemplateColumns: `repeat(${columnCount}, minmax(0, 1fr))`,
+  } satisfies React.CSSProperties;
 
   // The grid is as tall as the lowest occupied row, plus spare rows so there's
   // always empty space to drop into (and to grow downward).
-  const rowCount = maxOccupiedRow(layout) + 2;
+  const rowCount = maxOccupiedRow(layout, columnCount) + 2;
 
   // View-mode render of ONE page's grid (plain, clickable tiles — no drag). Used
   // for every page in the sliding track so the transition can animate between them.
@@ -638,7 +625,7 @@ function WidgetGrid({
       );
     }
     return (
-      <div className={gridClassName}>
+      <div className={gridClassName} style={gridStyle}>
         {page.layout.map((instance) => (
           <WidgetSlot
             key={instance.instanceId}
@@ -647,6 +634,7 @@ function WidgetGrid({
               instance.x ?? 0,
               instance.y ?? 0,
               instanceSize(instance),
+              columnCount,
             )}
           >
             {renderInstance(instance)}
@@ -656,129 +644,99 @@ function WidgetGrid({
     );
   }
 
-  function renderResponsiveView() {
-    const responsiveLayout = pages.flatMap((page) => page.layout);
-    if (responsiveLayout.length === 0) {
-      return (
-        <div className="px-3">
-          <div className="flex min-h-[200px] items-center justify-center rounded-[20px] border border-dashed border-[#E7E7EA] text-sm text-[#71717A]">
-            No widgets yet — switch to Edit to add some.
-          </div>
-        </div>
-      );
-    }
-
-    return (
-      <div className="flex-1 py-3">
-        <div
-          className="grid auto-rows-[167px] gap-4 px-3"
-          style={{
-            gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-          }}
-        >
-          {responsiveLayout.map((instance) => (
-            <WidgetSlot
-              key={instance.instanceId}
-              onOpen={() => openWidget(instance, linearItems)}
-              style={responsiveCellStyle(instanceSize(instance))}
-            >
-              {renderInstance(instance)}
-            </WidgetSlot>
-          ))}
-        </div>
-      </div>
-    );
-  }
-
   // The page area. View mode: all pages live side-by-side in a track that slides
   // with translateX — that's what makes paging fluid (iOS-style). Edit mode: only
   // the active page is mounted (it owns the dnd surface), so paging there is an
   // instant swap — you're reorganizing widgets, not swiping. No cross-page drag.
-  const gridContent =
-    !isEditing && DESKTOP_LAYOUT_MODE === "responsive" ? (
-      renderResponsiveView()
-    ) : !isEditing ? (
-      // `overflow-hidden` clips the neighbour pages horizontally for the slide. It
-      // would ALSO clip the unread badge, which overflows each tile's top-right
-      // corner (-top-1.5/-right-1.5) — so the track carries vertical padding (and
-      // each page carries side padding) to keep that corner overflow inside the
-      // clip region. py-3 (12px) clears the badge's ~8px overhang (6px offset + ring).
-      <div className="flex-1 overflow-hidden py-3">
-        <div
-          className="flex transition-transform duration-300 ease-out"
-          style={{
-            transform: `translateX(-${Math.max(0, activeIndex) * 100}%)`,
-          }}
-        >
-          {pages.map((page) => (
-            // px-3 (not the page-wide px-4..lg:px-8): the carousel arrows already
-            // inset the grid from the edges, so the page only needs enough side
-            // padding to keep the right-column unread badge (-right-1.5 + ring,
-            // ~8px) from being clipped by the track's overflow-hidden — matching
-            // the py-3 that does the same vertically.
-            <div key={page.id} className="w-full shrink-0 px-3">
-              {renderViewPage(page)}
-            </div>
-          ))}
-        </div>
-      </div>
-    ) : (
-      <DndContext
-        sensors={sensors}
-        collisionDetection={cellCollision}
-        onDragStart={handleDragStart}
-        onDragOver={handleDragOver}
-        onDragEnd={handleDragEnd}
-        onDragCancel={handleDragCancel}
+  const gridContent = !isEditing ? (
+    // `overflow-hidden` clips the neighbour pages horizontally for the slide. It
+    // would ALSO clip the unread badge, which overflows each tile's top-right
+    // corner (-top-1.5/-right-1.5) — so the track carries vertical padding (and
+    // each page carries side padding) to keep that corner overflow inside the
+    // clip region. py-3 (12px) clears the badge's ~8px overhang (6px offset + ring).
+    <div className="flex-1 overflow-hidden py-3">
+      <div
+        className="flex transition-transform duration-300 ease-out"
+        style={{
+          transform: `translateX(-${Math.max(0, activeIndex) * 100}%)`,
+        }}
       >
-        <div
-          className={cn(gridClassName, "relative flex-1 px-3")}
-          data-dragging={activeId ?? "none"}
-        >
-          {/* Empty drop-target cells behind the tiles: every (cx,cy) on the grid.
+        {pages.map((page) => (
+          // px-3 (not the page-wide px-4..lg:px-8): the carousel arrows already
+          // inset the grid from the edges, so the page only needs enough side
+          // padding to keep the right-column unread badge (-right-1.5 + ring,
+          // ~8px) from being clipped by the track's overflow-hidden — matching
+          // the py-3 that does the same vertically.
+          <div key={page.id} className="w-full shrink-0 px-3">
+            {renderViewPage(page)}
+          </div>
+        ))}
+      </div>
+    </div>
+  ) : (
+    <DndContext
+      sensors={sensors}
+      collisionDetection={cellCollision}
+      onDragStart={handleDragStart}
+      onDragOver={handleDragOver}
+      onDragEnd={handleDragEnd}
+      onDragCancel={handleDragCancel}
+    >
+      <div
+        className={cn(gridClassName, "relative flex-1 px-3")}
+        style={gridStyle}
+        data-dragging={activeId ?? "none"}
+      >
+        {/* Empty drop-target cells behind the tiles: every (cx,cy) on the grid.
             `event.over` resolves straight to a cell, so no pixel measuring.
             While dragging, the cells show a faint 1×1 reference grid. */}
-          <DropCells
-            cols={GRID_COLS}
-            rows={rowCount}
-            showGrid={activeId !== null}
-          />
+        <DropCells
+          cols={columnCount}
+          rows={rowCount}
+          showGrid={activeId !== null}
+        />
 
-          {/* Destination placeholder: a filled highlight at the cell + exact
+        {/* Destination placeholder: a filled highlight at the cell + exact
             footprint where the dragged widget will land, shown before release. */}
-          {activeInstance && dropCell ? (
-            <div
-              aria-hidden
-              style={{
-                ...cellStyle(
-                  dropCell.x,
-                  dropCell.y,
-                  instanceSize(activeInstance),
-                ),
-                zIndex: 1,
-              }}
-              className="border-primary/40 bg-primary/10 pointer-events-none rounded-[20px] border-2"
-            />
-          ) : null}
+        {activeInstance && dropCell ? (
+          <div
+            aria-hidden
+            style={{
+              ...cellStyle(
+                dropCell.x,
+                dropCell.y,
+                instanceSize(activeInstance),
+                columnCount,
+              ),
+              zIndex: 1,
+            }}
+            className="border-primary/40 bg-primary/10 pointer-events-none rounded-[20px] border-2"
+          />
+        ) : null}
 
-          {layout.map((instance, index) => {
-            const cell = renderCell(instance);
-            return (
-              <PositionedWidget
-                key={instance.instanceId}
-                id={instance.instanceId}
-                jiggleSeed={cell.x + cell.y + index}
-                style={cellStyle(cell.x, cell.y, instanceSize(instance))}
-                sizeControl={renderSizeControl(instance)}
-                onRemove={() => removeWidget(instance.instanceId)}
-              >
-                {renderInstance(instance)}
-              </PositionedWidget>
-            );
-          })}
-        </div>
-      </DndContext>
-    );
+        {layout.map((instance, index) => {
+          const cell = renderCell(instance);
+          return (
+            <PositionedWidget
+              key={instance.instanceId}
+              id={instance.instanceId}
+              jiggleSeed={cell.x + cell.y + index}
+              style={cellStyle(
+                cell.x,
+                cell.y,
+                instanceSize(instance),
+                columnCount,
+              )}
+              sizeControl={renderSizeControl(instance)}
+              onRemove={() => removeWidget(instance.instanceId)}
+            >
+              {renderInstance(instance)}
+            </PositionedWidget>
+          );
+        })}
+      </div>
+    </DndContext>
+  );
 
   return (
     <>
@@ -813,21 +771,17 @@ function WidgetGrid({
             className="flex items-stretch gap-3 px-2 sm:px-3 lg:px-4"
             onWheel={onWheel}
           >
-            {DESKTOP_LAYOUT_MODE === "paginated" || isEditing ? (
-              <PageArrow
-                direction="left"
-                disabled={activeIndex <= 0}
-                onClick={() => goToPage(-1)}
-              />
-            ) : null}
+            <PageArrow
+              direction="left"
+              disabled={activeIndex <= 0}
+              onClick={() => goToPage(-1)}
+            />
             {gridContent}
-            {DESKTOP_LAYOUT_MODE === "paginated" || isEditing ? (
-              <PageArrow
-                direction="right"
-                disabled={activeIndex >= pages.length - 1}
-                onClick={() => goToPage(1)}
-              />
-            ) : null}
+            <PageArrow
+              direction="right"
+              disabled={activeIndex >= pages.length - 1}
+              onClick={() => goToPage(1)}
+            />
           </div>
         </>
       )}
@@ -993,7 +947,6 @@ function SizeControl({
     small: "S",
     medium: "M",
     large: "L",
-    tall: "T",
   };
   return (
     <div className="flex items-center gap-0.5 rounded-full border border-[#E7E7EA] bg-white p-0.5 shadow-sm">

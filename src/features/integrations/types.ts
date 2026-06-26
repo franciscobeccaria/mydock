@@ -76,7 +76,7 @@ export type WidgetProps = {
    * iOS-style size for widgets that render multiple layouts (FRA-149). Absent or
    * "large" → today's full tile. Widgets that only support `large` ignore it.
    */
-  size?: "small" | "medium" | "large" | "tall";
+  size?: "small" | "medium" | "large";
   /**
    * Per-instance config for widgets with a header control (Gmail view, Tasks
    * list, Linear project). Lifted to the grid so it can key the per-config fetch

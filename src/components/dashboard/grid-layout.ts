@@ -1,4 +1,7 @@
-import { type WidgetInstance } from "@/components/dashboard/widget-instance";
+import {
+  type DashboardBreakpoint,
+  type WidgetInstance,
+} from "@/components/dashboard/widget-instance";
 import {
   CATALOG_BY_ID,
   defaultSizeFor,
@@ -14,19 +17,36 @@ import {
  * the state store, and are unit-testable in isolation.
  */
 
-/** The dashboard grid is 4 columns wide on desktop (the only mode for v1). */
+export const DASHBOARD_BREAKPOINTS: readonly DashboardBreakpoint[] = [
+  "sm",
+  "md",
+  "lg",
+  "xl",
+] as const;
+
+export const BREAKPOINT_COLS: Record<DashboardBreakpoint, number> = {
+  sm: 1,
+  md: 2,
+  lg: 3,
+  xl: 4,
+};
+
+/** The maximum dashboard grid is 4 columns wide, even on ultra-wide screens. */
 export const GRID_COLS = 4;
 
 /** Cell footprint per size: Large 2×2, Medium 2×1, Small 1×1. */
 const SIZE_FOOTPRINT: Record<WidgetSize, { w: number; h: number }> = {
   large: { w: 2, h: 2 },
-  tall: { w: 1, h: 2 },
   medium: { w: 2, h: 1 },
   small: { w: 1, h: 1 },
 };
 
-export function footprintFor(size: WidgetSize): { w: number; h: number } {
-  return SIZE_FOOTPRINT[size];
+export function footprintFor(
+  size: WidgetSize,
+  cols: number = GRID_COLS,
+): { w: number; h: number } {
+  const footprint = SIZE_FOOTPRINT[size];
+  return { ...footprint, w: Math.min(footprint.w, cols) };
 }
 
 /**
@@ -52,14 +72,30 @@ export type Placed = {
   h: number;
 };
 
-/** Project a layout to placements, using each instance's x,y (default 0,0). */
-export function toPlaced(layout: WidgetInstance[]): Placed[] {
+function coordsFor(
+  inst: WidgetInstance,
+  breakpoint?: DashboardBreakpoint,
+): { x: number; y: number } {
+  const placement = breakpoint ? inst.placements?.[breakpoint] : undefined;
+  return {
+    x: placement?.x ?? inst.x ?? 0,
+    y: placement?.y ?? inst.y ?? 0,
+  };
+}
+
+/** Project a layout to placements, using breakpoint placement, then legacy x/y. */
+export function toPlaced(
+  layout: WidgetInstance[],
+  breakpoint?: DashboardBreakpoint,
+  cols: number = breakpoint ? BREAKPOINT_COLS[breakpoint] : GRID_COLS,
+): Placed[] {
   return layout.map((inst) => {
-    const { w, h } = footprintFor(instanceSize(inst));
+    const { w, h } = footprintFor(instanceSize(inst), cols);
+    const { x, y } = coordsFor(inst, breakpoint);
     return {
       instanceId: inst.instanceId,
-      x: inst.x ?? 0,
-      y: inst.y ?? 0,
+      x,
+      y,
       w,
       h,
     };
@@ -88,8 +124,12 @@ function occupancyOfPlaced(placed: Placed[], exclude?: string): Set<string> {
 }
 
 /** Set of occupied "x,y" cell keys for a whole layout. */
-export function occupancyOf(layout: WidgetInstance[]): Set<string> {
-  return occupancyOfPlaced(toPlaced(layout));
+export function occupancyOf(
+  layout: WidgetInstance[],
+  breakpoint?: DashboardBreakpoint,
+  cols?: number,
+): Set<string> {
+  return occupancyOfPlaced(toPlaced(layout, breakpoint, cols));
 }
 
 /** True if a w×h block at (x,y) fits within `cols` and hits no occupied cell. */
@@ -133,12 +173,26 @@ export function findFirstFreeBlock(
 }
 
 /** Lowest empty row index (the bottom edge of the tallest widget). */
-export function maxOccupiedRow(layout: WidgetInstance[]): number {
+export function maxOccupiedRow(
+  layout: WidgetInstance[],
+  cols: number = GRID_COLS,
+): number {
   let max = 0;
-  for (const p of toPlaced(layout)) {
+  for (const p of toPlaced(layout, undefined, cols)) {
     if (p.y + p.h > max) max = p.y + p.h;
   }
   return max;
+}
+
+/** Return instances projected to the active breakpoint's persisted coordinates. */
+export function projectLayoutForBreakpoint(
+  layout: WidgetInstance[],
+  breakpoint: DashboardBreakpoint,
+): WidgetInstance[] {
+  return layout.map((inst) => {
+    const { x, y } = coordsFor(inst, breakpoint);
+    return { ...inst, x, y };
+  });
 }
 
 /**
@@ -181,7 +235,7 @@ export function computeMove(
   ty: number,
   cols: number = GRID_COLS,
 ): Placed[] | null {
-  const placed = toPlaced(layout);
+  const placed = toPlaced(layout, undefined, cols);
   const mover = placed.find((p) => p.instanceId === movedId);
   if (!mover) return null;
   const x = Math.max(0, Math.min(tx, cols - mover.w));
@@ -207,8 +261,8 @@ export function computeResize(
   nextSize: WidgetSize,
   cols: number = GRID_COLS,
 ): Placed[] | null {
-  const { w, h } = footprintFor(nextSize);
-  const placed = toPlaced(layout).map((p) =>
+  const { w, h } = footprintFor(nextSize, cols);
+  const placed = toPlaced(layout, undefined, cols).map((p) =>
     p.instanceId === resizedId
       ? { ...p, w, h, x: Math.max(0, Math.min(p.x, cols - w)) }
       : p,
@@ -231,7 +285,7 @@ export function normalizeLayout(
   const occupied = new Set<string>();
   for (const inst of layout) {
     if (inst.x == null || inst.y == null) continue;
-    const { w, h } = footprintFor(instanceSize(inst));
+    const { w, h } = footprintFor(instanceSize(inst), cols);
     for (let dx = 0; dx < w; dx++) {
       for (let dy = 0; dy < h; dy++)
         occupied.add(`${inst.x + dx},${inst.y + dy}`);
@@ -240,7 +294,7 @@ export function normalizeLayout(
 
   return layout.map((inst) => {
     if (inst.x != null && inst.y != null) return inst;
-    const { w, h } = footprintFor(instanceSize(inst));
+    const { w, h } = footprintFor(instanceSize(inst), cols);
     const cell = findFirstFreeBlock(occupied, cols, w, h) ?? { x: 0, y: 0 };
     for (let dx = 0; dx < w; dx++) {
       for (let dy = 0; dy < h; dy++)
@@ -248,4 +302,64 @@ export function normalizeLayout(
     }
     return { ...inst, x: cell.x, y: cell.y };
   });
+}
+
+/** Ensure every widget has persisted coordinates for all S/M/L/XL breakpoints. */
+export function normalizeBreakpointLayouts(
+  layout: WidgetInstance[],
+): WidgetInstance[] {
+  let next = layout.map((inst) => ({
+    ...inst,
+    placements: { ...(inst.placements ?? {}) },
+  }));
+
+  for (const breakpoint of DASHBOARD_BREAKPOINTS) {
+    const cols = BREAKPOINT_COLS[breakpoint];
+    const projected = next.map((inst) => {
+      const placement = inst.placements?.[breakpoint];
+      return {
+        ...inst,
+        x: placement?.x ?? inst.x,
+        y: placement?.y ?? inst.y,
+      };
+    });
+    const normalized = normalizeLayout(projected, cols);
+    const byId = new Map(normalized.map((inst) => [inst.instanceId, inst]));
+    next = next.map((inst) => {
+      const placed = byId.get(inst.instanceId);
+      if (!placed) return inst;
+      return {
+        ...inst,
+        x: inst.x ?? placed.x,
+        y: inst.y ?? placed.y,
+        placements: {
+          ...(inst.placements ?? {}),
+          [breakpoint]: { x: placed.x ?? 0, y: placed.y ?? 0 },
+        },
+      };
+    });
+  }
+
+  return next;
+}
+
+/** Merge the edited breakpoint's x/y cells back into the persisted placements. */
+export function mergeBreakpointLayout(
+  previous: WidgetInstance[],
+  edited: WidgetInstance[],
+  breakpoint: DashboardBreakpoint,
+): WidgetInstance[] {
+  const previousById = new Map(previous.map((inst) => [inst.instanceId, inst]));
+  return normalizeBreakpointLayouts(
+    edited.map((inst) => {
+      const prior = previousById.get(inst.instanceId);
+      return {
+        ...inst,
+        placements: {
+          ...(prior?.placements ?? inst.placements ?? {}),
+          [breakpoint]: { x: inst.x ?? 0, y: inst.y ?? 0 },
+        },
+      };
+    }),
+  );
 }

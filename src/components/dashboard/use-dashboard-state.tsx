@@ -15,12 +15,18 @@ import {
   dashboardStateSchema,
   defaultPages,
   emptyPage,
+  type DashboardBreakpoint,
   type DashboardPage,
   type DashboardStatePayload,
   type Shortcut,
   type WidgetInstance,
 } from "@/components/dashboard/widget-instance";
-import { normalizeLayout } from "@/components/dashboard/grid-layout";
+import {
+  BREAKPOINT_COLS,
+  mergeBreakpointLayout,
+  normalizeBreakpointLayouts,
+  projectLayoutForBreakpoint,
+} from "@/components/dashboard/grid-layout";
 
 /**
  * Ensure every instance on every page carries an (x,y) cell. Legacy/default
@@ -30,8 +36,33 @@ import { normalizeLayout } from "@/components/dashboard/grid-layout";
 function withPositions(payload: DashboardStatePayload): DashboardStatePayload {
   return {
     ...payload,
-    pages: payload.pages.map((page) => ({ ...page, layout: normalizeLayout(page.layout) })),
+    pages: payload.pages.map((page) => ({
+      ...page,
+      layout: normalizeBreakpointLayouts(page.layout),
+    })),
   };
+}
+
+function breakpointForWidth(width: number): DashboardBreakpoint {
+  if (width < 768) return "sm";
+  if (width < 1024) return "md";
+  if (width < 1280) return "lg";
+  return "xl";
+}
+
+function useViewportBreakpoint(): DashboardBreakpoint {
+  const [breakpoint, setBreakpoint] = useState<DashboardBreakpoint>("xl");
+
+  useEffect(() => {
+    function update() {
+      setBreakpoint(breakpointForWidth(window.innerWidth));
+    }
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, []);
+
+  return breakpoint;
 }
 
 const SAVE_DEBOUNCE_MS = 500;
@@ -43,10 +74,17 @@ type DashboardState = {
   activePageId: string;
   /** Widget instances on the active page (display order). */
   layout: WidgetInstance[];
+  /** Automatically selected viewport breakpoint and its capped column count. */
+  breakpoint: DashboardBreakpoint;
+  columnCount: number;
   shortcuts: Shortcut[];
   /** Replace the active page's layout (the only layout a mutation touches). */
-  setLayout: (next: WidgetInstance[] | ((current: WidgetInstance[]) => WidgetInstance[])) => void;
-  setShortcuts: (next: Shortcut[] | ((current: Shortcut[]) => Shortcut[])) => void;
+  setLayout: (
+    next: WidgetInstance[] | ((current: WidgetInstance[]) => WidgetInstance[]),
+  ) => void;
+  setShortcuts: (
+    next: Shortcut[] | ((current: Shortcut[]) => Shortcut[]),
+  ) => void;
   /** Navigate to a page by id (no-op if it doesn't exist). */
   setActivePage: (pageId: string) => void;
   /** Step to the previous/next page, clamped at the edges. */
@@ -104,7 +142,11 @@ function useDashboardStateStore(userId: string | null): DashboardState {
     pages: defaultPages(),
     shortcuts: [],
   }));
-  const [activePageId, setActivePageId] = useState<string>(() => state.pages[0]!.id);
+  const [activePageId, setActivePageId] = useState<string>(
+    () => state.pages[0]!.id,
+  );
+  const breakpoint = useViewportBreakpoint();
+  const columnCount = BREAKPOINT_COLS[breakpoint];
 
   const query = useQuery({
     queryKey: ["dashboard-state", userId],
@@ -167,12 +209,19 @@ function useDashboardStateStore(userId: string | null): DashboardState {
         ...current,
         pages: current.pages.map((page) => {
           if (page.id !== activePageId) return page;
-          const layout = typeof next === "function" ? next(page.layout) : next;
-          return { ...page, layout };
+          const activeLayout = projectLayoutForBreakpoint(
+            page.layout,
+            breakpoint,
+          );
+          const layout = typeof next === "function" ? next(activeLayout) : next;
+          return {
+            ...page,
+            layout: mergeBreakpointLayout(page.layout, layout, breakpoint),
+          };
         }),
       }));
     },
-    [commit, activePageId],
+    [commit, activePageId, breakpoint],
   );
 
   const setShortcuts = useCallback<DashboardState["setShortcuts"]>(
@@ -228,15 +277,29 @@ function useDashboardStateStore(userId: string | null): DashboardState {
   );
 
   const activeLayout = useMemo(
-    () => state.pages.find((p) => p.id === activePageId)?.layout ?? [],
-    [state.pages, activePageId],
+    () =>
+      projectLayoutForBreakpoint(
+        state.pages.find((p) => p.id === activePageId)?.layout ?? [],
+        breakpoint,
+      ),
+    [state.pages, activePageId, breakpoint],
+  );
+  const projectedPages = useMemo(
+    () =>
+      state.pages.map((page) => ({
+        ...page,
+        layout: projectLayoutForBreakpoint(page.layout, breakpoint),
+      })),
+    [state.pages, breakpoint],
   );
 
   return useMemo(
     () => ({
-      pages: state.pages,
+      pages: projectedPages,
       activePageId,
       layout: activeLayout,
+      breakpoint,
+      columnCount,
       shortcuts: state.shortcuts,
       setLayout,
       setShortcuts,
@@ -247,10 +310,12 @@ function useDashboardStateStore(userId: string | null): DashboardState {
       isLoading: query.isLoading,
     }),
     [
-      state.pages,
+      projectedPages,
       state.shortcuts,
       activePageId,
       activeLayout,
+      breakpoint,
+      columnCount,
       setLayout,
       setShortcuts,
       setActivePage,
@@ -277,14 +342,20 @@ export function DashboardStateProvider({
   children: React.ReactNode;
 }) {
   const value = useDashboardStateStore(userId);
-  return <DashboardStateContext.Provider value={value}>{children}</DashboardStateContext.Provider>;
+  return (
+    <DashboardStateContext.Provider value={value}>
+      {children}
+    </DashboardStateContext.Provider>
+  );
 }
 
 /** Read the shared dashboard state. Must be used under `DashboardStateProvider`. */
 export function useDashboardState(): DashboardState {
   const ctx = useContext(DashboardStateContext);
   if (!ctx) {
-    throw new Error("useDashboardState must be used within a DashboardStateProvider");
+    throw new Error(
+      "useDashboardState must be used within a DashboardStateProvider",
+    );
   }
   return ctx;
 }

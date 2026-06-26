@@ -14,15 +14,15 @@ export type SlotId =
   | "notion_page"
   | "weather";
 
-// iOS-style fixed widget sizes (FRA-149). Large = today's tile (1 grid column,
-// full height). Medium = 1 column, half height. Small = quarter width, square.
-export type WidgetSize = "small" | "medium" | "large" | "tall";
+// iOS-style fixed widget sizes (FRA-149). Large = today's tile (2×2 cells),
+// Medium = 2×1 cells, Small = 1×1 cell. Viewport breakpoints (S/M/L/XL) are a
+// separate dashboard-layout concern; don't mix them with widget footprint sizes.
+export type WidgetSize = "small" | "medium" | "large";
 
 export const WIDGET_SIZES: readonly WidgetSize[] = [
   "small",
   "medium",
   "large",
-  "tall",
 ] as const;
 
 export function isWidgetSize(value: string): value is WidgetSize {
@@ -54,8 +54,8 @@ export type WidgetCatalogEntry = {
   destination: string;
   /**
    * Sizes this widget can render (FRA-149). Most widgets only support `large`
-   * (today's tile) until a smaller layout is designed per app; Weather supports
-   * small / medium / large. Tall is reserved for responsive layout metadata. The first entry is the default size when the widget is added.
+   * (today's tile) until a smaller layout is designed per app. The first entry
+   * is the default size when the widget is added.
    */
   supportedSizes: readonly WidgetSize[];
 };
@@ -88,7 +88,6 @@ const APP_LABELS: Record<AppId, string> = {
 // Most widgets render only as the full-size tile for now (per-app smaller
 // layouts come later); Weather is the first to support all three sizes.
 const LARGE_ONLY = ["large"] as const;
-const WEATHER_SIZES = ["small", "medium", "large"] as const;
 
 // Single source of truth for addable widgets. Do NOT import the server-side
 // registry here — this module is consumed by client components.
@@ -177,7 +176,7 @@ export const WIDGET_CATALOG: readonly WidgetCatalogEntry[] = [
       "Current conditions and a short forecast for any city. No account needed.",
     destination: WEATHER_URL,
     // The first widget built for all three iOS sizes (FRA-149).
-    supportedSizes: WEATHER_SIZES,
+    supportedSizes: WIDGET_SIZES,
   },
 ] as const;
 

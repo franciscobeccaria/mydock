@@ -9,7 +9,6 @@ import {
   computeResize,
   findFirstFreeBlock,
   footprintFor,
-  GRID_COLS,
   maxOccupiedRow,
   occupancyOf,
 } from "@/components/dashboard/grid-layout";
@@ -32,7 +31,11 @@ type UseDashboardLayout = {
   /** Add a new instance of a slot, bound to an account (`null` = default),
    *  optionally seeded with initial per-instance config (e.g. a Notion page id
    *  chosen in the catalog preview). Placed at the first free cell that fits. */
-  addWidget: (slotId: SlotId, accountId?: string | null, config?: Record<string, string>) => void;
+  addWidget: (
+    slotId: SlotId,
+    accountId?: string | null,
+    config?: Record<string, string>,
+  ) => void;
   removeWidget: (instanceId: string) => void;
   /** Move a widget to grid cell (tx,ty); clamps in bounds and pushes overlaps down. */
   placeWidgetAt: (instanceId: string, tx: number, ty: number) => void;
@@ -44,28 +47,47 @@ type UseDashboardLayout = {
 };
 
 export function useDashboardLayout(): UseDashboardLayout {
-  const { layout, setLayout } = useDashboardState();
+  const { layout, setLayout, columnCount } = useDashboardState();
 
   const addWidget = useCallback(
-    (slotId: SlotId, accountId: string | null = null, config: Record<string, string> = {}) => {
+    (
+      slotId: SlotId,
+      accountId: string | null = null,
+      config: Record<string, string> = {},
+    ) => {
       setLayout((current) => {
-        const { w, h } = footprintFor(defaultSizeFor(CATALOG_BY_ID[slotId]));
-        const cell =
-          findFirstFreeBlock(occupancyOf(current), GRID_COLS, w, h) ??
-          { x: 0, y: maxOccupiedRow(current) };
+        const { w, h } = footprintFor(
+          defaultSizeFor(CATALOG_BY_ID[slotId]),
+          columnCount,
+        );
+        const cell = findFirstFreeBlock(
+          occupancyOf(current, undefined, columnCount),
+          columnCount,
+          w,
+          h,
+        ) ?? { x: 0, y: maxOccupiedRow(current, columnCount) };
         return [
           ...current,
-          { instanceId: crypto.randomUUID(), slotId, accountId, config, x: cell.x, y: cell.y },
+          {
+            instanceId: crypto.randomUUID(),
+            slotId,
+            accountId,
+            config,
+            x: cell.x,
+            y: cell.y,
+          },
         ];
       });
     },
-    [setLayout],
+    [setLayout, columnCount],
   );
 
   const removeWidget = useCallback(
     (instanceId: string) => {
       // Filter only — the freed cells stay blank (iOS-18 style, no repack).
-      setLayout((current) => current.filter((instance) => instance.instanceId !== instanceId));
+      setLayout((current) =>
+        current.filter((instance) => instance.instanceId !== instanceId),
+      );
     },
     [setLayout],
   );
@@ -74,7 +96,7 @@ export function useDashboardLayout(): UseDashboardLayout {
     (instanceId: string, tx: number, ty: number) => {
       setLayout((current) => {
         // Same math the live drag preview uses, so the drop matches the preview.
-        const resolved = computeMove(current, instanceId, tx, ty);
+        const resolved = computeMove(current, instanceId, tx, ty, columnCount);
         if (!resolved) return current; // unknown mover or no-op
         const byId = new Map(resolved.map((p) => [p.instanceId, p]));
         // Map cells back onto instances; array order is preserved so React keys
@@ -85,7 +107,7 @@ export function useDashboardLayout(): UseDashboardLayout {
         });
       });
     },
-    [setLayout],
+    [setLayout, columnCount],
   );
 
   const updateConfig = useCallback(
@@ -111,7 +133,7 @@ export function useDashboardLayout(): UseDashboardLayout {
             ? { ...inst, config: { ...inst.config, size } }
             : inst,
         );
-        const resolved = computeResize(sized, instanceId, size);
+        const resolved = computeResize(sized, instanceId, size, columnCount);
         if (!resolved) return sized;
         const byId = new Map(resolved.map((p) => [p.instanceId, p]));
         return sized.map((inst) => {
@@ -120,7 +142,7 @@ export function useDashboardLayout(): UseDashboardLayout {
         });
       });
     },
-    [setLayout],
+    [setLayout, columnCount],
   );
 
   // Duplicates are allowed, so the catalog never disables an entry.
@@ -130,7 +152,19 @@ export function useDashboardLayout(): UseDashboardLayout {
     () => new Set(layout.map((instance) => instance.slotId)),
     [layout],
   );
-  const isActive = useCallback((slotId: SlotId) => activeSlots.has(slotId), [activeSlots]);
+  const isActive = useCallback(
+    (slotId: SlotId) => activeSlots.has(slotId),
+    [activeSlots],
+  );
 
-  return { layout, availableToAdd, isActive, addWidget, removeWidget, placeWidgetAt, updateConfig, resizeWidget };
+  return {
+    layout,
+    availableToAdd,
+    isActive,
+    addWidget,
+    removeWidget,
+    placeWidgetAt,
+    updateConfig,
+    resizeWidget,
+  };
 }
