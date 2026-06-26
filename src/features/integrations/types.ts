@@ -10,7 +10,10 @@ export const providers = [
 ] as const;
 
 export type Provider = (typeof providers)[number];
-export type GoogleCapabilityProvider = Exclude<Provider, "linear" | "notion" | "weather">;
+export type GoogleCapabilityProvider = Exclude<
+  Provider,
+  "linear" | "notion" | "weather"
+>;
 
 export type WidgetViewState =
   | "loading"
@@ -73,7 +76,7 @@ export type WidgetProps = {
    * iOS-style size for widgets that render multiple layouts (FRA-149). Absent or
    * "large" → today's full tile. Widgets that only support `large` ignore it.
    */
-  size?: "small" | "medium" | "large";
+  size?: "small" | "medium" | "large" | "tall";
   /**
    * Per-instance config for widgets with a header control (Gmail view, Tasks
    * list, Linear project). Lifted to the grid so it can key the per-config fetch

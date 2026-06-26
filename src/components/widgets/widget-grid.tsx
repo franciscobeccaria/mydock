@@ -24,11 +24,17 @@ import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 
 import { useDashboardMode } from "@/components/dashboard/dashboard-mode-context";
-import { PickerLockProvider, usePickerLock } from "@/components/dashboard/picker-lock-context";
+import {
+  PickerLockProvider,
+  usePickerLock,
+} from "@/components/dashboard/picker-lock-context";
 import { PageDots } from "@/components/dashboard/page-dots";
 import { ShortcutsRow } from "@/components/dashboard/shortcuts-row";
 import { useDashboardLayout } from "@/components/dashboard/use-dashboard-layout";
-import { DashboardStateProvider, useDashboardState } from "@/components/dashboard/use-dashboard-state";
+import {
+  DashboardStateProvider,
+  useDashboardState,
+} from "@/components/dashboard/use-dashboard-state";
 import { type WidgetInstance } from "@/components/dashboard/widget-instance";
 import {
   computeMove,
@@ -38,8 +44,14 @@ import {
   maxOccupiedRow,
 } from "@/components/dashboard/grid-layout";
 import { deriveLinearAssignedUrl } from "@/components/widgets/linear-widget";
-import { WidgetCatalogDialog, type WidgetAccount } from "@/components/widgets/widget-catalog-dialog";
-import { CATALOG_BY_ID, type WidgetSize } from "@/components/widgets/widget-catalog";
+import {
+  WidgetCatalogDialog,
+  type WidgetAccount,
+} from "@/components/widgets/widget-catalog-dialog";
+import {
+  CATALOG_BY_ID,
+  type WidgetSize,
+} from "@/components/widgets/widget-catalog";
 import {
   CONFIG_KEY,
   fetchWidget,
@@ -56,15 +68,42 @@ import { type WidgetPayload } from "@/features/integrations/types";
 const INTERACTIVE =
   'a,button,input,textarea,select,[role="button"],[role="option"],[role="listbox"],[data-slot="select-trigger"],[data-interactive="true"]';
 
+type DashboardLayoutMode = "responsive" | "paginated";
+
+// New desktop view mode: widgets flow in their configured order and wrap to the
+// viewport instead of forcing a 4-column page carousel. Edit mode intentionally
+// keeps the fixed paginated grid because drag/drop depends on explicit cells.
+const DESKTOP_LAYOUT_MODE: DashboardLayoutMode = "responsive";
+
 /** Stable empty sensor descriptor list — passed to DndContext to suspend dragging. */
 const NO_SENSORS: ReturnType<typeof useSensors> = [];
 
 /** CSS Grid explicit placement for a footprint at cell (x,y). Lines are 1-based. */
-function cellStyle(x: number, y: number, size: WidgetSize): React.CSSProperties {
+function cellStyle(
+  x: number,
+  y: number,
+  size: WidgetSize,
+): React.CSSProperties {
   const { w, h } = footprintFor(size);
   return {
     gridColumn: `${x + 1} / span ${w}`,
     gridRow: `${y + 1} / span ${h}`,
+  };
+}
+
+const RESPONSIVE_SIZE_META: Record<WidgetSize, { cols: number; rows: number }> =
+  {
+    small: { cols: 1, rows: 1 },
+    medium: { cols: 2, rows: 1 },
+    large: { cols: 2, rows: 2 },
+    tall: { cols: 1, rows: 2 },
+  };
+
+function responsiveCellStyle(size: WidgetSize): React.CSSProperties {
+  const { cols, rows } = RESPONSIVE_SIZE_META[size];
+  return {
+    gridColumn: `span ${cols}`,
+    gridRow: `span ${rows}`,
   };
 }
 
@@ -100,7 +139,9 @@ function WidgetSlot({
     <div
       style={style}
       onPointerDown={(event) => {
-        pointerOnInteractive.current = !!(event.target as HTMLElement).closest(INTERACTIVE);
+        pointerOnInteractive.current = !!(event.target as HTMLElement).closest(
+          INTERACTIVE,
+        );
       }}
       onClick={() => {
         if (pointerOnInteractive.current) return;
@@ -156,7 +197,8 @@ function PositionedWidget({
   /** Optional size picker, rendered as a clickable corner control. */
   sizeControl?: React.ReactNode;
 }) {
-  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id });
+  const { attributes, listeners, setNodeRef, transform, isDragging } =
+    useDraggable({ id });
 
   // The whole tile is the drag handle in edit mode — grabbing anywhere on the widget
   // moves it (iOS-style). Inner controls are non-interactive while editing.
@@ -174,7 +216,7 @@ function PositionedWidget({
       {...attributes}
       {...listeners}
       className={cn(
-        "relative h-full touch-none cursor-grab active:cursor-grabbing",
+        "relative h-full cursor-grab touch-none active:cursor-grabbing",
         isDragging && "z-10",
       )}
     >
@@ -191,7 +233,7 @@ function PositionedWidget({
             event.stopPropagation();
             onRemove();
           }}
-          className="absolute -left-2 -top-2 z-20 flex size-6 cursor-pointer items-center justify-center rounded-full border border-[#E7E7EA] bg-white text-[#71717A] shadow-sm transition-colors hover:text-[#18181B]"
+          className="absolute -top-2 -left-2 z-20 flex size-6 cursor-pointer items-center justify-center rounded-full border border-[#E7E7EA] bg-white text-[#71717A] shadow-sm transition-colors hover:text-[#18181B]"
         >
           <Minus className="size-3.5" />
         </button>
@@ -216,7 +258,7 @@ function PositionedWidget({
           // Inner controls are inert while editing so the whole surface drags —
           // except elements marked [data-no-drag] (header selects), which stay
           // interactive and (via ControlAwarePointerSensor) don't start a drag.
-          "h-full select-none transition-shadow duration-150 [&_*]:pointer-events-none [&_[data-no-drag]]:pointer-events-auto [&_[data-no-drag]_*]:pointer-events-auto",
+          "h-full transition-shadow duration-150 select-none [&_*]:pointer-events-none [&_[data-no-drag]]:pointer-events-auto [&_[data-no-drag]_*]:pointer-events-auto",
           // Jiggle at rest; while dragging, kill the animation so the lift transform applies.
           // `rounded-[20px]` matches the card so the lift shadow follows the rounded
           // corners (otherwise the shadow casts a square halo at the bottom).
@@ -251,10 +293,12 @@ function InstanceWidget({
   const provider = entry.provider;
   const configKey = CONFIG_KEY[slotId];
   const configValue = configKey ? config[configKey] : undefined;
-  const setConfig = configKey ? (value: string) => onConfigChange(configKey, value) : undefined;
+  const setConfig = configKey
+    ? (value: string) => onConfigChange(configKey, value)
+    : undefined;
 
   // Gmail's view is a server-side query param; key it so All/Unread fetch apart.
-  const gmailView = slotId === "gmail" ? configValue ?? "all" : undefined;
+  const gmailView = slotId === "gmail" ? (configValue ?? "all") : undefined;
 
   // The Notion Page widget's config is its pinned page id, and the Weather
   // widget's is its city — both ride the generic `config` server param.
@@ -266,8 +310,14 @@ function InstanceWidget({
 
   // Keyed by accountId so two instances on different connections cache apart.
   const query = useQuery({
-    queryKey: widgetQueryKey(slotId, gmailView, instance.accountId, fetchConfig),
-    queryFn: () => fetchWidget(provider, gmailView, instance.accountId, fetchConfig),
+    queryKey: widgetQueryKey(
+      slotId,
+      gmailView,
+      instance.accountId,
+      fetchConfig,
+    ),
+    queryFn: () =>
+      fetchWidget(provider, gmailView, instance.accountId, fetchConfig),
     staleTime: widgetStaleTime(provider),
     gcTime: 15 * 60_000,
   });
@@ -276,13 +326,17 @@ function InstanceWidget({
     onLoaded?.(query.data);
   }, [onLoaded, query.data]);
 
-  return renderWidget(slotId, getWidgetPayload(provider, WIDGET_TITLE[slotId], query.data, query.error), {
-    onRetry: () => query.refetch(),
-    isRetrying: query.isFetching,
-    configValue,
-    onConfigChange: setConfig,
-    size,
-  });
+  return renderWidget(
+    slotId,
+    getWidgetPayload(provider, WIDGET_TITLE[slotId], query.data, query.error),
+    {
+      onRetry: () => query.refetch(),
+      isRetrying: query.isFetching,
+      configValue,
+      onConfigChange: setConfig,
+      size,
+    },
+  );
 }
 
 function WidgetGrid({
@@ -357,26 +411,46 @@ function WidgetGrid({
   // Active instances, order, add/remove/config all live in the layout hook,
   // backed by per-user Supabase state (no client cache; FRA-140). The layout is
   // already scoped to the active page by the store.
-  const { layout, addWidget, removeWidget, placeWidgetAt, updateConfig, resizeWidget } =
-    useDashboardLayout();
+  const {
+    layout,
+    addWidget,
+    removeWidget,
+    placeWidgetAt,
+    updateConfig,
+    resizeWidget,
+  } = useDashboardLayout();
 
   // Multi-page nav (FRA-140). `pages`/`activePageId` drive the dots; the grid
   // renders only the active page's `layout`. The dock (shortcuts) is shared.
-  const { pages, activePageId, setActivePage, goToPage, addPage, removePage, isLoading } =
-    useDashboardState();
+  const {
+    pages,
+    activePageId,
+    setActivePage,
+    goToPage,
+    addPage,
+    removePage,
+    isLoading,
+  } = useDashboardState();
   const activeIndex = pages.findIndex((p) => p.id === activePageId);
 
   // Linear's catalog destination is the generic https://linear.app/; when issues
   // have loaded we resolve the user's own assigned-issues view from their URLs.
   // The latest loaded Linear payload is captured so a click can use it.
-  const linearItemsRef = useRef<WidgetPayload["items"]>([]);
-  const handleLinearLoaded = useCallback((payload: WidgetPayload | undefined) => {
-    if (payload) linearItemsRef.current = payload.items;
-  }, []);
+  const [linearItems, setLinearItems] = useState<WidgetPayload["items"]>([]);
+  const handleLinearLoaded = useCallback(
+    (payload: WidgetPayload | undefined) => {
+      if (payload) setLinearItems(payload.items);
+    },
+    [],
+  );
 
   const activeSensors = useSensors(
-    useSensor(ControlAwarePointerSensor, { activationConstraint: { distance: 6 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+    useSensor(ControlAwarePointerSensor, {
+      activationConstraint: { distance: 6 },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
   );
   // Empty sensor set while a picker is open → dnd-kit listens for nothing, so the
   // dismiss click can't start a drag (see isPickerOpen above).
@@ -386,7 +460,10 @@ function WidgetGrid({
   // reflow in real time as you hover — iOS-style — instead of only on drop. Null
   // when not dragging. The dragged tile itself isn't in here (dnd-kit translates it
   // under the cursor); it keeps its committed cell until the drop lands.
-  const [preview, setPreview] = useState<Map<string, { x: number; y: number }> | null>(null);
+  const [preview, setPreview] = useState<Map<
+    string,
+    { x: number; y: number }
+  > | null>(null);
   // The widget currently being dragged. It keeps its committed cell (dnd-kit
   // translates it under the cursor), so it's excluded from the live reflow.
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -401,7 +478,10 @@ function WidgetGrid({
       if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
       const el = document.activeElement as HTMLElement | null;
       const typing =
-        el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable);
+        el &&
+        (el.tagName === "INPUT" ||
+          el.tagName === "TEXTAREA" ||
+          el.isContentEditable);
       if (typing || activeId !== null) return;
       goToPage(e.key === "ArrowLeft" ? -1 : 1);
     }
@@ -447,7 +527,9 @@ function WidgetGrid({
       return;
     }
     lastTargetRef.current = cell;
-    setPreview(new Map(resolved.map((p) => [p.instanceId, { x: p.x, y: p.y }])));
+    setPreview(
+      new Map(resolved.map((p) => [p.instanceId, { x: p.x, y: p.y }])),
+    );
   }
 
   function handleDragEnd(event: DragEndEvent) {
@@ -469,9 +551,9 @@ function WidgetGrid({
   // the destination placeholder so the user sees exactly which cell + footprint
   // the widget drops into, before releasing.
   const activeInstance = activeId
-    ? layout.find((i) => i.instanceId === activeId) ?? null
+    ? (layout.find((i) => i.instanceId === activeId) ?? null)
     : null;
-  const dropCell = activeId ? preview?.get(activeId) ?? null : null;
+  const dropCell = activeId ? (preview?.get(activeId) ?? null) : null;
 
   /** The cell a tile should render at right now: its preview position mid-drag,
    *  else its committed (x,y). The dragged tile keeps its committed cell — dnd-kit
@@ -482,13 +564,17 @@ function WidgetGrid({
     return preview?.get(instance.instanceId) ?? committed;
   }
 
-  function openWidget(instance: WidgetInstance) {
+  function openWidget(
+    instance: WidgetInstance,
+    linearItems: WidgetPayload["items"],
+  ) {
     const { slotId, config } = instance;
     const destination =
       slotId === "gmail" && config["gmail-view"] === "unread"
         ? "https://mail.google.com/mail/u/0/#search/is%3Aunread+category%3Aprimary"
         : slotId === "linear"
-          ? deriveLinearAssignedUrl(linearItemsRef.current) ?? CATALOG_BY_ID[slotId].destination
+          ? (deriveLinearAssignedUrl(linearItems) ??
+            CATALOG_BY_ID[slotId].destination)
           : CATALOG_BY_ID[slotId].destination;
     if (destination.startsWith("http")) {
       window.open(destination, "_blank", "noopener,noreferrer");
@@ -501,7 +587,9 @@ function WidgetGrid({
     return (
       <InstanceWidget
         instance={instance}
-        onConfigChange={(key, value) => updateConfig(instance.instanceId, key, value)}
+        onConfigChange={(key, value) =>
+          updateConfig(instance.instanceId, key, value)
+        }
         onLoaded={instance.slotId === "linear" ? handleLinearLoaded : undefined}
       />
     );
@@ -554,8 +642,12 @@ function WidgetGrid({
         {page.layout.map((instance) => (
           <WidgetSlot
             key={instance.instanceId}
-            onOpen={() => openWidget(instance)}
-            style={cellStyle(instance.x ?? 0, instance.y ?? 0, instanceSize(instance))}
+            onOpen={() => openWidget(instance, linearItems)}
+            style={cellStyle(
+              instance.x ?? 0,
+              instance.y ?? 0,
+              instanceSize(instance),
+            )}
           >
             {renderInstance(instance)}
           </WidgetSlot>
@@ -564,82 +656,129 @@ function WidgetGrid({
     );
   }
 
+  function renderResponsiveView() {
+    const responsiveLayout = pages.flatMap((page) => page.layout);
+    if (responsiveLayout.length === 0) {
+      return (
+        <div className="px-3">
+          <div className="flex min-h-[200px] items-center justify-center rounded-[20px] border border-dashed border-[#E7E7EA] text-sm text-[#71717A]">
+            No widgets yet — switch to Edit to add some.
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="flex-1 py-3">
+        <div
+          className="grid auto-rows-[167px] gap-4 px-3"
+          style={{
+            gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+          }}
+        >
+          {responsiveLayout.map((instance) => (
+            <WidgetSlot
+              key={instance.instanceId}
+              onOpen={() => openWidget(instance, linearItems)}
+              style={responsiveCellStyle(instanceSize(instance))}
+            >
+              {renderInstance(instance)}
+            </WidgetSlot>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   // The page area. View mode: all pages live side-by-side in a track that slides
   // with translateX — that's what makes paging fluid (iOS-style). Edit mode: only
   // the active page is mounted (it owns the dnd surface), so paging there is an
   // instant swap — you're reorganizing widgets, not swiping. No cross-page drag.
-  const gridContent = !isEditing ? (
-    // `overflow-hidden` clips the neighbour pages horizontally for the slide. It
-    // would ALSO clip the unread badge, which overflows each tile's top-right
-    // corner (-top-1.5/-right-1.5) — so the track carries vertical padding (and
-    // each page carries side padding) to keep that corner overflow inside the
-    // clip region. py-3 (12px) clears the badge's ~8px overhang (6px offset + ring).
-    <div className="flex-1 overflow-hidden py-3">
-      <div
-        className="flex transition-transform duration-300 ease-out"
-        style={{ transform: `translateX(-${Math.max(0, activeIndex) * 100}%)` }}
-      >
-        {pages.map((page) => (
-          // px-3 (not the page-wide px-4..lg:px-8): the carousel arrows already
-          // inset the grid from the edges, so the page only needs enough side
-          // padding to keep the right-column unread badge (-right-1.5 + ring,
-          // ~8px) from being clipped by the track's overflow-hidden — matching
-          // the py-3 that does the same vertically.
-          <div key={page.id} className="w-full shrink-0 px-3">
-            {renderViewPage(page)}
-          </div>
-        ))}
+  const gridContent =
+    !isEditing && DESKTOP_LAYOUT_MODE === "responsive" ? (
+      renderResponsiveView()
+    ) : !isEditing ? (
+      // `overflow-hidden` clips the neighbour pages horizontally for the slide. It
+      // would ALSO clip the unread badge, which overflows each tile's top-right
+      // corner (-top-1.5/-right-1.5) — so the track carries vertical padding (and
+      // each page carries side padding) to keep that corner overflow inside the
+      // clip region. py-3 (12px) clears the badge's ~8px overhang (6px offset + ring).
+      <div className="flex-1 overflow-hidden py-3">
+        <div
+          className="flex transition-transform duration-300 ease-out"
+          style={{
+            transform: `translateX(-${Math.max(0, activeIndex) * 100}%)`,
+          }}
+        >
+          {pages.map((page) => (
+            // px-3 (not the page-wide px-4..lg:px-8): the carousel arrows already
+            // inset the grid from the edges, so the page only needs enough side
+            // padding to keep the right-column unread badge (-right-1.5 + ring,
+            // ~8px) from being clipped by the track's overflow-hidden — matching
+            // the py-3 that does the same vertically.
+            <div key={page.id} className="w-full shrink-0 px-3">
+              {renderViewPage(page)}
+            </div>
+          ))}
+        </div>
       </div>
-    </div>
-  ) : (
-    <DndContext
-      sensors={sensors}
-      collisionDetection={cellCollision}
-      onDragStart={handleDragStart}
-      onDragOver={handleDragOver}
-      onDragEnd={handleDragEnd}
-      onDragCancel={handleDragCancel}
-    >
-      <div
-        className={cn(gridClassName, "relative flex-1 px-3")}
-        data-dragging={activeId ?? "none"}
+    ) : (
+      <DndContext
+        sensors={sensors}
+        collisionDetection={cellCollision}
+        onDragStart={handleDragStart}
+        onDragOver={handleDragOver}
+        onDragEnd={handleDragEnd}
+        onDragCancel={handleDragCancel}
       >
-        {/* Empty drop-target cells behind the tiles: every (cx,cy) on the grid.
+        <div
+          className={cn(gridClassName, "relative flex-1 px-3")}
+          data-dragging={activeId ?? "none"}
+        >
+          {/* Empty drop-target cells behind the tiles: every (cx,cy) on the grid.
             `event.over` resolves straight to a cell, so no pixel measuring.
             While dragging, the cells show a faint 1×1 reference grid. */}
-        <DropCells cols={GRID_COLS} rows={rowCount} showGrid={activeId !== null} />
-
-        {/* Destination placeholder: a filled highlight at the cell + exact
-            footprint where the dragged widget will land, shown before release. */}
-        {activeInstance && dropCell ? (
-          <div
-            aria-hidden
-            style={{
-              ...cellStyle(dropCell.x, dropCell.y, instanceSize(activeInstance)),
-              zIndex: 1,
-            }}
-            className="pointer-events-none rounded-[20px] border-2 border-primary/40 bg-primary/10"
+          <DropCells
+            cols={GRID_COLS}
+            rows={rowCount}
+            showGrid={activeId !== null}
           />
-        ) : null}
 
-        {layout.map((instance, index) => {
-          const cell = renderCell(instance);
-          return (
-            <PositionedWidget
-              key={instance.instanceId}
-              id={instance.instanceId}
-              jiggleSeed={cell.x + cell.y + index}
-              style={cellStyle(cell.x, cell.y, instanceSize(instance))}
-              sizeControl={renderSizeControl(instance)}
-              onRemove={() => removeWidget(instance.instanceId)}
-            >
-              {renderInstance(instance)}
-            </PositionedWidget>
-          );
-        })}
-      </div>
-    </DndContext>
-  );
+          {/* Destination placeholder: a filled highlight at the cell + exact
+            footprint where the dragged widget will land, shown before release. */}
+          {activeInstance && dropCell ? (
+            <div
+              aria-hidden
+              style={{
+                ...cellStyle(
+                  dropCell.x,
+                  dropCell.y,
+                  instanceSize(activeInstance),
+                ),
+                zIndex: 1,
+              }}
+              className="border-primary/40 bg-primary/10 pointer-events-none rounded-[20px] border-2"
+            />
+          ) : null}
+
+          {layout.map((instance, index) => {
+            const cell = renderCell(instance);
+            return (
+              <PositionedWidget
+                key={instance.instanceId}
+                id={instance.instanceId}
+                jiggleSeed={cell.x + cell.y + index}
+                style={cellStyle(cell.x, cell.y, instanceSize(instance))}
+                sizeControl={renderSizeControl(instance)}
+                onRemove={() => removeWidget(instance.instanceId)}
+              >
+                {renderInstance(instance)}
+              </PositionedWidget>
+            );
+          })}
+        </div>
+      </DndContext>
+    );
 
   return (
     <>
@@ -674,13 +813,21 @@ function WidgetGrid({
             className="flex items-stretch gap-3 px-2 sm:px-3 lg:px-4"
             onWheel={onWheel}
           >
-            <PageArrow direction="left" disabled={activeIndex <= 0} onClick={() => goToPage(-1)} />
+            {DESKTOP_LAYOUT_MODE === "paginated" || isEditing ? (
+              <PageArrow
+                direction="left"
+                disabled={activeIndex <= 0}
+                onClick={() => goToPage(-1)}
+              />
+            ) : null}
             {gridContent}
-            <PageArrow
-              direction="right"
-              disabled={activeIndex >= pages.length - 1}
-              onClick={() => goToPage(1)}
-            />
+            {DESKTOP_LAYOUT_MODE === "paginated" || isEditing ? (
+              <PageArrow
+                direction="right"
+                disabled={activeIndex >= pages.length - 1}
+                onClick={() => goToPage(1)}
+              />
+            ) : null}
           </div>
         </>
       )}
@@ -734,10 +881,13 @@ function PageArrow({
  *  isn't flush against the top edge. */
 function GridSkeleton() {
   return (
-    <div className="flex items-stretch gap-3 px-2 pt-6 sm:px-3 lg:px-4" aria-hidden>
+    <div
+      className="flex items-stretch gap-3 px-2 pt-6 sm:px-3 lg:px-4"
+      aria-hidden
+    >
       {/* Spacers stand in for the ‹ › arrows so the grid lands at the same x. */}
       <div className="h-9 w-9 shrink-0" />
-      <div className="grid flex-1 grid-cols-4 gap-4 auto-rows-[167px] px-3">
+      <div className="grid flex-1 auto-rows-[167px] grid-cols-4 gap-4 px-3">
         <div className="col-span-2 row-span-2 animate-pulse rounded-[20px] bg-[#F1F1F4]" />
         <div className="col-span-2 row-span-1 animate-pulse rounded-[20px] bg-[#F1F1F4]" />
         <div className="col-span-1 row-span-1 animate-pulse rounded-[20px] bg-[#F1F1F4]" />
@@ -782,7 +932,15 @@ export default function WidgetGridWithState({
 /** One empty droppable grid cell at (cx,cy). Drop resolves `event.over` here.
  *  While dragging, it shows a faint 1×1 reference border so the user can see the
  *  grid and judge which cell the widget will land in (especially over empty space). */
-function DropCell({ cx, cy, showGrid }: { cx: number; cy: number; showGrid: boolean }) {
+function DropCell({
+  cx,
+  cy,
+  showGrid,
+}: {
+  cx: number;
+  cy: number;
+  showGrid: boolean;
+}) {
   const { setNodeRef } = useDroppable({ id: `cell:${cx}:${cy}` });
   return (
     <div
@@ -801,11 +959,21 @@ function DropCell({ cx, cy, showGrid }: { cx: number; cy: number; showGrid: bool
 
 /** The full layer of empty drop cells covering cols × rows, behind the tiles.
  *  `showGrid` reveals the 1×1 reference grid (only while dragging). */
-function DropCells({ cols, rows, showGrid }: { cols: number; rows: number; showGrid: boolean }) {
+function DropCells({
+  cols,
+  rows,
+  showGrid,
+}: {
+  cols: number;
+  rows: number;
+  showGrid: boolean;
+}) {
   const cells: React.ReactNode[] = [];
   for (let cy = 0; cy < rows; cy++) {
     for (let cx = 0; cx < cols; cx++) {
-      cells.push(<DropCell key={`${cx}:${cy}`} cx={cx} cy={cy} showGrid={showGrid} />);
+      cells.push(
+        <DropCell key={`${cx}:${cy}`} cx={cx} cy={cy} showGrid={showGrid} />,
+      );
     }
   }
   return <>{cells}</>;
@@ -821,7 +989,12 @@ function SizeControl({
   current: WidgetSize;
   onSelect: (size: WidgetSize) => void;
 }) {
-  const LETTER: Record<WidgetSize, string> = { small: "S", medium: "M", large: "L" };
+  const LETTER: Record<WidgetSize, string> = {
+    small: "S",
+    medium: "M",
+    large: "L",
+    tall: "T",
+  };
   return (
     <div className="flex items-center gap-0.5 rounded-full border border-[#E7E7EA] bg-white p-0.5 shadow-sm">
       {sizes.map((size) => (

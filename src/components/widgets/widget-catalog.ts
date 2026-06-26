@@ -16,9 +16,14 @@ export type SlotId =
 
 // iOS-style fixed widget sizes (FRA-149). Large = today's tile (1 grid column,
 // full height). Medium = 1 column, half height. Small = quarter width, square.
-export type WidgetSize = "small" | "medium" | "large";
+export type WidgetSize = "small" | "medium" | "large" | "tall";
 
-export const WIDGET_SIZES: readonly WidgetSize[] = ["small", "medium", "large"] as const;
+export const WIDGET_SIZES: readonly WidgetSize[] = [
+  "small",
+  "medium",
+  "large",
+  "tall",
+] as const;
 
 export function isWidgetSize(value: string): value is WidgetSize {
   return (WIDGET_SIZES as readonly string[]).includes(value);
@@ -50,7 +55,7 @@ export type WidgetCatalogEntry = {
   /**
    * Sizes this widget can render (FRA-149). Most widgets only support `large`
    * (today's tile) until a smaller layout is designed per app; Weather supports
-   * all three. The first entry is the default size when the widget is added.
+   * small / medium / large. Tall is reserved for responsive layout metadata. The first entry is the default size when the widget is added.
    */
   supportedSizes: readonly WidgetSize[];
 };
@@ -83,6 +88,7 @@ const APP_LABELS: Record<AppId, string> = {
 // Most widgets render only as the full-size tile for now (per-app smaller
 // layouts come later); Weather is the first to support all three sizes.
 const LARGE_ONLY = ["large"] as const;
+const WEATHER_SIZES = ["small", "medium", "large"] as const;
 
 // Single source of truth for addable widgets. Do NOT import the server-side
 // registry here — this module is consumed by client components.
@@ -102,7 +108,8 @@ export const WIDGET_CATALOG: readonly WidgetCatalogEntry[] = [
     appId: "gmail",
     provider: "gmail",
     label: "Inbox",
-    description: "The messages that matter most, without leaving your dashboard.",
+    description:
+      "The messages that matter most, without leaving your dashboard.",
     destination: "https://mail.google.com/mail/u/0/#inbox",
     supportedSizes: LARGE_ONLY,
   },
@@ -156,7 +163,8 @@ export const WIDGET_CATALOG: readonly WidgetCatalogEntry[] = [
     appId: "notion",
     provider: "notion",
     label: "Page",
-    description: "Pin one Notion page and read its content right on your dashboard.",
+    description:
+      "Pin one Notion page and read its content right on your dashboard.",
     destination: NOTION_URL,
     supportedSizes: LARGE_ONLY,
   },
@@ -165,18 +173,21 @@ export const WIDGET_CATALOG: readonly WidgetCatalogEntry[] = [
     appId: "weather",
     provider: "weather",
     label: "Weather",
-    description: "Current conditions and a short forecast for any city. No account needed.",
+    description:
+      "Current conditions and a short forecast for any city. No account needed.",
     destination: WEATHER_URL,
     // The first widget built for all three iOS sizes (FRA-149).
-    supportedSizes: WIDGET_SIZES,
+    supportedSizes: WEATHER_SIZES,
   },
 ] as const;
 
 export const DEFAULT_LAYOUT: SlotId[] = WIDGET_CATALOG.map((w) => w.id);
 
-export const CATALOG_BY_ID: Record<SlotId, WidgetCatalogEntry> = Object.fromEntries(
-  WIDGET_CATALOG.map((w) => [w.id, w]),
-) as Record<SlotId, WidgetCatalogEntry>;
+export const CATALOG_BY_ID: Record<SlotId, WidgetCatalogEntry> =
+  Object.fromEntries(WIDGET_CATALOG.map((w) => [w.id, w])) as Record<
+    SlotId,
+    WidgetCatalogEntry
+  >;
 
 export function isSlotId(value: string): value is SlotId {
   return value in CATALOG_BY_ID;

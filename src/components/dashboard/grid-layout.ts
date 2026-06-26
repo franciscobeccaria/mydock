@@ -20,6 +20,7 @@ export const GRID_COLS = 4;
 /** Cell footprint per size: Large 2×2, Medium 2×1, Small 1×1. */
 const SIZE_FOOTPRINT: Record<WidgetSize, { w: number; h: number }> = {
   large: { w: 2, h: 2 },
+  tall: { w: 1, h: 2 },
   medium: { w: 2, h: 1 },
   small: { w: 1, h: 1 },
 };
@@ -43,19 +44,33 @@ export function instanceSize(instance: WidgetInstance): WidgetSize {
 }
 
 /** A widget placed on the grid: its id, top-left cell, and footprint. */
-export type Placed = { instanceId: string; x: number; y: number; w: number; h: number };
+export type Placed = {
+  instanceId: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+};
 
 /** Project a layout to placements, using each instance's x,y (default 0,0). */
 export function toPlaced(layout: WidgetInstance[]): Placed[] {
   return layout.map((inst) => {
     const { w, h } = footprintFor(instanceSize(inst));
-    return { instanceId: inst.instanceId, x: inst.x ?? 0, y: inst.y ?? 0, w, h };
+    return {
+      instanceId: inst.instanceId,
+      x: inst.x ?? 0,
+      y: inst.y ?? 0,
+      w,
+      h,
+    };
   });
 }
 
 /** Axis-aligned bounding-box overlap test. */
 export function rectsOverlap(a: Placed, b: Placed): boolean {
-  return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+  return (
+    a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y
+  );
 }
 
 /** Set of "x,y" cell keys covered by every placement's footprint. */
@@ -78,7 +93,14 @@ export function occupancyOf(layout: WidgetInstance[]): Set<string> {
 }
 
 /** True if a w×h block at (x,y) fits within `cols` and hits no occupied cell. */
-function blockIsFree(occupied: Set<string>, cols: number, x: number, y: number, w: number, h: number) {
+function blockIsFree(
+  occupied: Set<string>,
+  cols: number,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+) {
   if (x < 0 || x + w > cols) return false;
   for (let dx = 0; dx < w; dx++) {
     for (let dy = 0; dy < h; dy++) {
@@ -165,7 +187,9 @@ export function computeMove(
   const x = Math.max(0, Math.min(tx, cols - mover.w));
   const y = Math.max(0, ty);
   if (mover.x === x && mover.y === y) return null;
-  const next = placed.map((p) => (p.instanceId === movedId ? { ...p, x, y } : p));
+  const next = placed.map((p) =>
+    p.instanceId === movedId ? { ...p, x, y } : p,
+  );
   return resolveCollisions(next, movedId);
 }
 
@@ -199,14 +223,18 @@ export function computeResize(
  * have positions. Legacy layouts pack into a no-hole grid the first time; after
  * that every instance has explicit x,y, so user-made holes are preserved.
  */
-export function normalizeLayout(layout: WidgetInstance[], cols: number = GRID_COLS): WidgetInstance[] {
+export function normalizeLayout(
+  layout: WidgetInstance[],
+  cols: number = GRID_COLS,
+): WidgetInstance[] {
   // Reserve cells for instances that already carry a position.
   const occupied = new Set<string>();
   for (const inst of layout) {
     if (inst.x == null || inst.y == null) continue;
     const { w, h } = footprintFor(instanceSize(inst));
     for (let dx = 0; dx < w; dx++) {
-      for (let dy = 0; dy < h; dy++) occupied.add(`${inst.x + dx},${inst.y + dy}`);
+      for (let dy = 0; dy < h; dy++)
+        occupied.add(`${inst.x + dx},${inst.y + dy}`);
     }
   }
 
@@ -215,7 +243,8 @@ export function normalizeLayout(layout: WidgetInstance[], cols: number = GRID_CO
     const { w, h } = footprintFor(instanceSize(inst));
     const cell = findFirstFreeBlock(occupied, cols, w, h) ?? { x: 0, y: 0 };
     for (let dx = 0; dx < w; dx++) {
-      for (let dy = 0; dy < h; dy++) occupied.add(`${cell.x + dx},${cell.y + dy}`);
+      for (let dy = 0; dy < h; dy++)
+        occupied.add(`${cell.x + dx},${cell.y + dy}`);
     }
     return { ...inst, x: cell.x, y: cell.y };
   });
