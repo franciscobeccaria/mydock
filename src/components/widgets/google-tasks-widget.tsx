@@ -25,6 +25,7 @@ import type { WidgetProps } from "@/features/integrations/types";
 // Google's "Starred" smart list is intentionally absent: the public Tasks API
 // exposes no starred status, so such a filter could only ever show wrong data.
 const ALL = "all";
+const MAX_VISIBLE_TASKS = 10;
 
 export function GoogleTasksWidget({
   payload,
@@ -112,7 +113,7 @@ export function GoogleTasksWidget({
       {payload.state === "connected" ? (
         items.length > 0 ? (
           <div className="-mx-1 space-y-0.5">
-            {items.slice(0, 5).map((item) => (
+            {items.slice(0, MAX_VISIBLE_TASKS).map((item) => (
               <div
                 key={item.id}
                 className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 rounded-[10px] px-2 py-1.5 transition-colors hover:bg-[#F8F8FA]"
