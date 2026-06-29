@@ -153,7 +153,7 @@ export function WidgetCard({
           isEditing ? "pt-2.5" : "pt-2",
         )}
       >
-        <div className="px-3.5 sm:px-4">{children}</div>
+        <div className="h-full px-3.5 sm:px-4">{children}</div>
       </CardContent>
       </Card>
     </div>

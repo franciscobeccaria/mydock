@@ -51,8 +51,8 @@ export function GmailWidget({
 
   const emptyMessage =
     view === "unread"
-      ? "No unread emails right now."
-      : payload.emptyMessage ?? "Inbox zero. Nice.";
+      ? "No unread messages."
+      : "No Gmail messages in your inbox.";
 
   const selectedLabel = view === "unread" ? "Unread" : "All";
 
