@@ -69,11 +69,10 @@ const UNREAD_COUNT_PAGE_SIZE = 500;
 const UNREAD_COUNT_MAX_PAGES = 20;
 
 /**
- * The Gmail UI's "Primary" badge counts unread *threads* that are in the inbox AND
- * in the Primary category. Neither the label endpoint (counts archived mail too)
- * nor messages.list `resultSizeEstimate` (capped at ~201) gives this — the only
- * accurate way is to page threads.list with that exact query and count the IDs.
- * `fields` trims the payload to just thread IDs + the page token.
+ * Count unread inbox threads by paging the Gmail thread list with the INBOX and
+ * UNREAD labels. `resultSizeEstimate` is capped/approximate, so counting IDs is
+ * more reliable for the widget badge, while an empty mailbox returns an empty
+ * response instead of becoming an error state.
  */
 async function fetchPrimaryUnreadCount(
   token: Awaited<ReturnType<typeof resolveGoogleToken>>,
@@ -85,7 +84,8 @@ async function fetchPrimaryUnreadCount(
 
     do {
       const url = new URL("https://gmail.googleapis.com/gmail/v1/users/me/threads");
-      url.searchParams.set("q", "in:inbox category:primary is:unread");
+      url.searchParams.append("labelIds", "INBOX");
+      url.searchParams.append("labelIds", "UNREAD");
       url.searchParams.set("maxResults", String(UNREAD_COUNT_PAGE_SIZE));
       url.searchParams.set("fields", "threads/id,nextPageToken");
       if (pageToken) {
@@ -126,9 +126,12 @@ export async function getGmailItems(
   listUrl.searchParams.set("maxResults", String(GMAIL_PAGE_SIZE));
   listUrl.searchParams.set("fields", "threads/id,threads/snippet,nextPageToken");
   if (view === "unread") {
-    // Unread is its own result set: most recent unread threads, no time window, so a
-    // buried or older unread still surfaces. Mirrors the unread-count query's filters.
-    listUrl.searchParams.set("q", "in:inbox category:primary is:unread");
+    // Unread is its own result set: most recent unread inbox threads, no time
+    // window, so a buried or older unread still surfaces. Use label filters here
+    // instead of a Gmail search query so a zero-unread inbox comes back as an
+    // empty list rather than tripping the widget's error state.
+    listUrl.searchParams.append("labelIds", "INBOX");
+    listUrl.searchParams.append("labelIds", "UNREAD");
   } else {
     listUrl.searchParams.set("labelIds", "INBOX");
     listUrl.searchParams.set("q", "category:primary newer_than:14d");
